@@ -1,12 +1,13 @@
 import sys
 import os
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QDockWidget, QInputDialog, QDialog, QPushButton, QSizePolicy, QFileDialog, QMenu, QStyleFactory
-from PyQt6.QtGui import QAction
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QDockWidget, QInputDialog, QDialog, QPushButton, QSizePolicy, QFileDialog, QMenu, QMessageBox
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
 import Dans_Diffraction as dans
+import resources.resources
 
 # TODO/IDEAS
 
@@ -945,6 +946,10 @@ class FileTreeWidget(QWidget):
 
     def add_file(self, file_path):
         """Add a file to the tree widget."""
+        
+        ###
+        # the following should probably be moved to the main application
+        
         if not file_path.endswith('.h5'):
             return
         # try to read the file to get its shape
@@ -962,6 +967,10 @@ class FileTreeWidget(QWidget):
         except Exception as e:
             print(f"Error reading file {file_path}: {e}")
             return
+        
+        ### end
+        
+
         self.files.append(file_path)
         file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
         # check if the file is already in the tree
@@ -1308,15 +1317,12 @@ class AzintData():
             print("No intensity data loaded.")
             return None
         I = self.I.copy()  # Make a copy of the intensity data
-        print(self.I0,I0_normalized)
         if self.I0 is not None and I0_normalized:
             if self.I0.shape[0] != I.shape[0]:
                 print(f"I0 data shape {self.I0.shape} must match the number of frames {I.shape} in the azimuthal integration data.")
                 return None
             # Normalize the intensity data by I0
             I = I / self.I0[:, np.newaxis]
-            print(self.I0.min(), self.I0.max())
-        print(I.max())
         return I
     
     def set_I0(self, I0):
@@ -1459,30 +1465,15 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("Plot Azimuthally Integrated Data")
         self.statusBar().showMessage("")
-        
-
-
+        # Set the window icon
+        self.setWindowIcon(QIcon(":/icons/plaid.png"))
+    
         self.E = None  # Energy in keV
         self.is_Q = False
-
-        #self.I = None
         self.y_avg = None
 
         self.azint_data = AzintData()
-
         self.aux_data = {}
-        # # Generate example data
-        # x = np.linspace(0, 10, 100)
-        # y = np.linspace(0, 100, 100)
-        # z = np.sin(np.outer(y, x))
-
-        # x_res = np.mean(np.diff(x))
-        # y_res = np.mean(np.diff(y))
-
-        # x_edges = np.append(x, x[-1] + x_res) - x_res / 2
-        # y_edges = np.append(y, y[-1] + y_res) - y_res / 2
-
-        #xx, yy = np.meshgrid(x_edges, y_edges)
 
         # Create the main layout
         main_layout = QHBoxLayout()
@@ -1495,53 +1486,13 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.centralWidget().setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-
-
-
-        #tree_layout.addWidget(self.cif_tree,1)
-
-        #tree_layout.addStretch(1)
-
-        # TEST THE AZINT DATA LOADING
-        #self.azint_data = AzintData([aname])
-        #self.azint_data.load()
-        #print(self.azint_data.x.shape, self.azint_data.I.shape, self.azint_data.is_q, self.azint_data.E)
-
-        # x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
-        # I = self.azint_data.get_I()
-        # is_q = self.azint_data.is_q
-        # if self.azint_data.E is not None:
-        #     self.E = self.azint_data.E
         
 
-        #x, I, is_q = load_xrd1d(aname)
-        #x_edge = np.append(x, x[-1] + np.mean(np.diff(x))) - np.mean(np.diff(x)) / 2
-        #y_edge = np.arange(I.shape[0]+1) - 0.5
 
-        #self.I = I
-        #self.y_avg = I.mean(axis=0)
-
-        # self.widget.set_data(x, y, I)
-
-        # Create the PColorMeshWidget
-        #self.widget = PColorMeshWidget(x, y, I)
         self.heatmap = HeatmapWidget()
-        #self.heatmap.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
-        #self.heatmap.set_data(x, I.T)
-        
-        #self.setCentralWidget(self.widget)
 
         # Create the PatternWidget
         self.pattern = PatternWidget()
-        #self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
-        #self.pattern.set_ylabel("Intensity (a.u.)")
-        #self.pattern.set_data(x, I[0])
-
-        #self.pattern.setMinimumHeight(200)
-
-
-        # Set the average pattern
-        self.pattern.set_avg_data(self.y_avg)
 
         # Add the widgets to the main layout
         plot_layout.addWidget(self.heatmap,1)
@@ -1552,18 +1503,16 @@ class MainWindow(QMainWindow):
         # create a dock widget for the file tree
         file_tree_dock = QDockWidget("File Tree", self)
         file_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
-        file_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
+        file_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         file_tree_dock.setWidget(self.file_tree)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, file_tree_dock)
-        
-        #tree_layout.addWidget(self.file_tree,1)
 
         # Create the CIF tree widget
         self.cif_tree = CIFTreeWidget()
         # create a dock widget for the CIF tree
         cif_tree_dock = QDockWidget("CIF Tree", self)
         cif_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
-        cif_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable)
+        cif_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         cif_tree_dock.setWidget(self.cif_tree)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, cif_tree_dock)
   
@@ -1571,14 +1520,12 @@ class MainWindow(QMainWindow):
         # create a dock widget for the auxiliary plot
         auxiliary_plot_dock = QDockWidget("Auxiliary Plot", self)
         auxiliary_plot_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
-        auxiliary_plot_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable)
+        auxiliary_plot_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         auxiliary_plot_dock.setWidget(self.auxiliary_plot)
-   
         
         self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, auxiliary_plot_dock)
 
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
-
  
         self.file_tree.sigItemDoubleClicked.connect(self.load_file)
         self.file_tree.sigItemRemoved.connect(self.remove_file)
@@ -1604,10 +1551,47 @@ class MainWindow(QMainWindow):
         self.heatmap.addHLine()
         self.auxiliary_plot.addVLine()
 
+        # Create a menu bar
+        menu_bar = self.menuBar()
+        # Create a file menu
+        file_menu = menu_bar.addMenu("&File")
+        # Add an action to load azimuthal integration data
+        open_action = QAction("&Open", self)
+        open_action.setToolTip("Open an HDF5 file")
+        open_action.triggered.connect(self.open_file)
+        file_menu.addAction(open_action)
 
+        # create a view menu
+        view_menu = menu_bar.addMenu("&View")
+        # Add an action to toggle the file tree visibility
+        toggle_file_tree_action = file_tree_dock.toggleViewAction()
+        toggle_file_tree_action.setText("Show &File Tree")
+        view_menu.addAction(toggle_file_tree_action)
+        # Add an action to toggle the CIF tree visibility
+        toggle_cif_tree_action = cif_tree_dock.toggleViewAction()
+        toggle_cif_tree_action.setText("Show &CIF Tree")
+        view_menu.addAction(toggle_cif_tree_action)
+        # Add an action to toggle the auxiliary plot visibility
+        toggle_auxiliary_plot_action = auxiliary_plot_dock.toggleViewAction()
+        toggle_auxiliary_plot_action.setText("Show &Auxiliary Plot")
+        view_menu.addAction(toggle_auxiliary_plot_action)
+
+        # create a help menu
+        help_menu = menu_bar.addMenu("&Help")
+        # Add an action to show the help dialog
+        help_action = QAction("&Help", self)
+        help_action.setToolTip("Show help dialog")
+        help_action.triggered.connect(self.show_help_dialog)
+        help_menu.addAction(help_action)
+        # Add an action to show the about dialog
+        about_action = QAction("&About", self)
+        about_action.setToolTip("Show about dialog")
+        about_action.triggered.connect(self.show_about_dialog)
+        help_menu.addAction(about_action)
+
+
+  
         self.centralWidget().resizeEvent = self.resizeEvent
-
-
 
 
 
@@ -1616,18 +1600,14 @@ class MainWindow(QMainWindow):
         aname = fname.replace("\\raw", "\\process\\azint").replace(".h5", "_pilatus_integrated.h5")
         self.file_tree.add_file(aname)
         #self.load_file(aname)
-        self.load_auxiliary_data(fname)
+        #self.load_auxiliary_data(fname)
         #h5dialog = H5Dialog(self, fname)
         #h5dialog.open()
         # h5dialog.finished.connect(lambda result: print(f"H5Dialog finished with result: {result}"))
         #h5dialog.finished.connect(lambda result: print(h5dialog.selected_items) if result == QDialog.DialogCode.Accepted else print("H5Dialog cancelled"))
 
 
-
-
         self.resizeDocks([file_tree_dock, cif_tree_dock, auxiliary_plot_dock], [200, 200, 200], QtCore.Qt.Orientation.Horizontal)
-
-        #self.resize(self.size())
 
 
     def add_pattern(self, pos):
@@ -1704,6 +1684,22 @@ class MainWindow(QMainWindow):
             status_text += f"Y: {y_value:7.3f}"
         self.statusBar().showMessage(status_text)
 
+    def open_file(self):
+        """
+        Open a file dialog to select an azimuthal integration file
+        and add it to the file tree.
+        """
+        # prompt the user to select a file
+        if self.file_tree.files and self.file_tree.files[-1] is not None:
+            default_dir = os.path.dirname(self.file_tree.files[-1])
+        else:
+            default_dir = os.path.expanduser("~")
+        file_path, ok = QFileDialog.getOpenFileName(self, "Select Azimuthal Integration File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
+        if not ok or not file_path:
+            return
+        # add the file to the file tree
+        self.file_tree.add_file(file_path)
+        
 
     def load_file(self, file_path, item=None):
         """Load the selected file and update the heatmap and pattern."""
@@ -1952,7 +1948,49 @@ class MainWindow(QMainWindow):
                     _x, _y = ref_item.getData()
                     _x = q_to_tth(_x, self.E)
                     ref_item.setData(x=_x, y=_y)
+
+    def show_help_dialog(self):
+        """Show the help dialog."""
+        help_text = (
+            "<h2>Help - Plot Azimuthally Integrated Data</h2>"
+            "<p>This application allows you to visualize azimuthally integrated data "
+            "from HDF5 files and compare them with reference patterns from CIF files.</p>"
+            "<h3>Usage</h3>"
+            "<ol>"
+            "<li>Add a new HDF5 file by drag/drop or from 'File' -> 'Open'.</li>"
+            "<li>Double-click on a file in the file tree to load it.</li>"
+            "<li>Right-click on a file in the file tree to add I0 or auxiliary data.</li>"
+            "<li>Double-click on the heatmap to add a moveable selection line.</li>"
+            "<li>Right-click on the moveale line to remove it.</li>"
+            "<li>Use the file tree to manage your files and auxiliary data.</li>"
+            "<li>Use the CIF tree to add reference patterns from CIF files.</li>"
+            "<li>Click on a reference line to show its reflection index in the pattern.</li>"
+            "</ol>"
+            "<h3>Keyboard Shortcuts</h3>"
+            "<ul>"
+            "<li><b>L</b>: Toggle log scale for the heatmap.</li>"
+            "<li><b>Q</b>: Toggle between q and 2theta axes.</li>"
+            "</ul>"
+        )
+        # Show the help dialog with the specified text
+        QMessageBox.about(self, "Help", help_text)
     
+    def show_about_dialog(self):
+        """Show the about dialog."""
+        about_text = (
+            "<h2>plaid - Plot Azimuthally Integrated Data</h2>"
+            "<p>Version 0.1</p>"
+            "<p>This application allows you to visualize azimuthally integrated data "
+            "from HDF5 files and compare them with reference patterns from CIF files.</p>"
+            "<p>Developed by: <a href='mailto:fgjorup@chem.au.dk'>F.H. Gjørup</a><br>"
+            "Department of Chemistry, Aarhus University & <br>"
+            "MAX IV Laboratory, Lund University</p>"
+            "<p>License: GPL-3.0</p>"
+            "<p>For more information, visit the <a href='https://github.com/fgjorup/plaid'>GitHub repository</a>.</p>"
+        )
+        # Show the about dialog with the specified text
+        QMessageBox.about(self, "About", about_text)
+
     def show(self):
         """Override the show method to update the pattern geometry."""
         super().show()
