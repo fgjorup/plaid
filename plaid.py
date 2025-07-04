@@ -14,26 +14,14 @@ import resources.resources
 # - Update patterns when a new file is loaded
 # - Add a button to save the average pattern
 # - Add a button to save the selected pattern(s)
-# - Add a button to convert between 2theta and q
-# - Add Open file(s) button to load files from the file system
-# - Add a Load CIF button to load CIF files from the file system
-# - Add an option for loading and plotting meta
-# - Add a View menu with options to toggle the visibility of the file tree and CIF tree
-# - Add a Help menu with options to show the documentation and the about dialog
+# - Expand the Help menu 
 # - Make a more robust file loading mechanism that can handle different file formats and 
 #   structures, perhaps as a "data class"
 
 # - properly remove data from all plots when itemRemoved from the file tree
 
-# - add auxilary tree item in the file tree
-# - add a button/function to load aux data, including a way to relate the diffraction data
-#   to the aux data. Perhaps as a context menu on the file tree items
-# - handle auxiliary data drag drop
-# - add "add I0" to filetree context 
+# - handle auxiliary data drag drop 
 
-# - find a way to avoid overwriting aux data and I0 data when loading new files
-#   perhaps with a seperate class for the aux data and I0 data, rather than
-#   the azint class
 
 def load_xrd1d(fname):
     """Load XRD 1D data from an HDF5 file."""
@@ -81,6 +69,95 @@ def tth_to_q(tth, E):
     wavelength = 12.398 / E
     q = (4 * np.pi / wavelength) * np.sin(np.radians(tth) / 2)
     return q
+
+def get_nx_entry(f):
+    """Get the entry nexus group from a nexus hdf5 instance."""
+    if 'entry' in f:
+        return f['entry']
+    elif 'NXentry' in f:
+        return f['NXentry']
+    else:
+        return None
+
+def get_nx_default(f):
+    """Get the default nexus group from a nexus hdf5 instance."""
+    entry = get_nx_entry(f)
+    if entry is None:
+        return None
+    if 'default' in entry.attrs:
+        default = entry.attrs['default']
+        if default in entry:
+            return entry[default]
+    elif 'default' in f:
+        default = f.attrs['default']
+        if default in f:
+            return f[default]
+    return None
+
+def get_nx_signal(gr):
+    """Get the signal nexus dset from a nexus group."""
+    if gr is None:
+        return None
+    if 'signal' in gr.attrs:
+        signal = gr.attrs['signal']
+        if signal in gr:
+            return gr[signal]
+    return None
+
+def get_nx_axes(gr):
+    """Get a list of the axes nexus dsets from a nexus group."""
+    if gr is None:
+        return []
+    axes = []
+    if 'axes' in gr.attrs:
+        axes_names = gr.attrs['axes']
+        for ax in axes_names:
+            if ax in gr and isinstance(gr[ax], h5.Dataset):
+                axes.append(gr[ax])
+            else:
+                axes.append(None)
+    return axes
+        
+def get_nx_energy(f):
+    """Attempt to get the energy from the nxmonochromator group in a nexus hdf5 file"""
+    entry = get_nx_entry(f)
+    if entry is None:
+        return None
+    monochromator = get_nx_monochromator(entry)
+    if monochromator is None:
+        return None
+    if 'energy' in monochromator:
+        return monochromator['energy'][()]
+    elif 'wavelength' in monochromator:
+        wavelength = monochromator['wavelength'][()]
+        return 12.398 / wavelength  # Convert wavelength to energy in keV
+# If no energy or wavelength is found, return None
+    return None    
+
+def get_nx_group(gr, name, nxclass=None):
+    """Get a generic nexus group with a specific name or nxclass from a group."""
+    if gr is None:
+        return None
+    if name in gr:
+        return gr[name]
+    if nxclass is not None:
+        for key in gr.keys():
+            if "NX_class" in gr[key].attrs and gr[key].attrs["NX_class"] == nxclass:
+                return gr[key]
+
+def get_nx_instrument(gr):
+    """Get the instrument nexus group from a nexus hdf5 file."""
+    return get_nx_group(gr, 'instrument', 'NXinstrument')
+
+def get_nx_monochromator(gr):
+    """Get the nxmonochromator group from a nexus hdf5 file."""
+    if gr is None:
+        return None
+    if 'NX_class' in gr.attrs and not gr.attrs['NX_class'] == 'NXinstrument':
+        # If the group is not an instrument, try to get the instrument group
+        gr = get_nx_instrument(gr)
+    return get_nx_group(gr, 'monochromator', 'NXmonochromator')
+
 
 class H5Dialog(QDialog):
     """A dialog to select the content of an HDF5 file."""
@@ -955,8 +1032,17 @@ class FileTreeWidget(QWidget):
         # try to read the file to get its shape
         try:
             with h5.File(file_path, 'r') as f:
-                if 'entry/data1d' in f:
+                if 'entry' in f and 'default' in f['entry'].attrs:
+                    dset = f['entry'][f['entry'].attrs['default']]
+                    if 'signal' in dset.attrs:
+                        shape = dset[dset.attrs['signal']].shape
+                    elif 'I' in dset:
+                        shape = dset['I'].shape
+                elif 'entry/data1d' in f:
                     dset = f['entry/data1d']
+                    shape = dset['I'].shape
+                elif 'entry/data' in f:
+                    dset = f['entry/data']
                     shape = dset['I'].shape
                 elif 'I' in f:
                     dset = f['I']
@@ -1223,7 +1309,8 @@ class Reference():
 class AzintData():
     """A class to hold azimuthal integration data."""
 
-    def __init__(self, fnames=None):
+    def __init__(self, parent=None,fnames=None):
+        self.parent = parent
         if isinstance(fnames, str):
             fnames = [fnames]
         self.fnames = fnames
@@ -1278,7 +1365,7 @@ class AzintData():
     def user_E_dialog(self):
         """Prompt the user for the energy value if not available in the file."""
         if self.E is None:
-            E, ok = QInputDialog.getDouble(None, "Energy Input", "Enter the energy in keV:", value=35.0, min=1.0, max=200.0)
+            E, ok = QInputDialog.getDouble(self.parent, "Energy Input", "Enter the energy in keV:", value=35.0, min=1.0, max=200.0)
             if ok:
                 self.E = E
                 return E
@@ -1372,19 +1459,34 @@ class AzintData():
     def _load_azint(self, fname):
         """Load azimuthal integration data from a nxazint HDF5 file."""
         with h5.File(fname, 'r') as f:
-            data_group = f['entry/data']
-            x = data_group['radial_axis'][:]
-            I = data_group['I'][:]
-            is_q = 'q' in data_group['radial_axis'].attrs['long_name'].lower()
+            default = get_nx_default(f)
+            if default is None:
+                print(f"File {fname} does not contain a valid azimuthal integration dataset.")
+                return None, None, None, None
+            signal = get_nx_signal(default)
+            axis = get_nx_axes(default)[-1] # Get the last axis, which is usually the radial axis
+            if signal is None or axis is None:
+                print(f"File {fname} does not contain a valid azimuthal integration dataset.")
+                return None, None, None, None
+            x = axis[:]
+            is_Q = 'q' in axis.attrs['long_name'].lower() if 'long_name' in axis.attrs else False
+            I = signal[:]
+            E = get_nx_energy(f)
+            return x, I, is_Q, E 
+        # with h5.File(fname, 'r') as f:
+        #     data_group = f['entry/data']
+        #     x = data_group['radial_axis'][:]
+        #     I = data_group['I'][:]
+        #     is_q = 'q' in data_group['radial_axis'].attrs['long_name'].lower()
 
-            if 'entry/instrument/monochromator/energy' in f:
-                E = f['entry/instrument/monochromator/energy'][()]
-            elif 'entry/instrument/monochromator/wavelength' in f:
-                wavelength = f['entry/instrument/monochromator/wavelength'][()]
-                E = 12.398 / wavelength  # Convert wavelength to energy in keV
-            else:
-                E = None
-        return x, I, is_q
+        #     if 'entry/instrument/monochromator/energy' in f:
+        #         E = f['entry/instrument/monochromator/energy'][()]
+        #     elif 'entry/instrument/monochromator/wavelength' in f:
+        #         wavelength = f['entry/instrument/monochromator/wavelength'][()]
+        #         E = 12.398 / wavelength  # Convert wavelength to energy in keV
+        #     else:
+        #         E = None
+        # return x, I, is_q, E
 
     def _load_azint_old(self, fname):
         """Load azimuthal integration data from an old (DanMAX) nxazint HDF5 file."""
@@ -1463,7 +1565,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("Plot Azimuthally Integrated Data")
+        self.setWindowTitle("plaid - plot azimuthally integrated data")
         self.statusBar().showMessage("")
         # Set the window icon
         self.setWindowIcon(QIcon(":/icons/plaid.png"))
@@ -1561,6 +1663,15 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self.open_file)
         file_menu.addAction(open_action)
 
+        file_menu.addSeparator()
+
+        # add an action to load a reference from a cif
+        load_cif_action = QAction("Load &CIF",self)
+        load_cif_action.setToolTip("Load a reference from a CIF file")
+        load_cif_action.triggered.connect(self.open_cif_file)
+        file_menu.addAction(load_cif_action)
+
+
         # create a view menu
         view_menu = menu_bar.addMenu("&View")
         # Add an action to toggle the file tree visibility
@@ -1575,6 +1686,15 @@ class MainWindow(QMainWindow):
         toggle_auxiliary_plot_action = auxiliary_plot_dock.toggleViewAction()
         toggle_auxiliary_plot_action.setText("Show &Auxiliary Plot")
         view_menu.addAction(toggle_auxiliary_plot_action)
+        # add a separator
+        view_menu.addSeparator()
+        # add a toggle Q action
+        toggle_q_action = QAction("&Q (Å-1)",self)
+        toggle_q_action.setCheckable(True)
+        toggle_q_action.setChecked(self.is_Q)
+        toggle_q_action.triggered.connect(self.toggle_q)
+        view_menu.addAction(toggle_q_action)
+        self.toggle_q_action = toggle_q_action
 
         # create a help menu
         help_menu = menu_bar.addMenu("&Help")
@@ -1632,7 +1752,7 @@ class MainWindow(QMainWindow):
         """Handle the removal of a file from the file tree."""
         if self.azint_data.fnames is None or file not in self.azint_data.fnames:
             return
-        self.azint_data = AzintData()
+        self.azint_data = AzintData(self)
         self.heatmap.clear()
         self.pattern.clear()
         self.auxiliary_plot.clear()
@@ -1704,7 +1824,7 @@ class MainWindow(QMainWindow):
     def load_file(self, file_path, item=None):
         """Load the selected file and update the heatmap and pattern."""
 
-        self.azint_data = AzintData([file_path])
+        self.azint_data = AzintData(self,[file_path])
         if not self.azint_data.load():
             print(f"Failed to load file: {file_path}")
             return
@@ -1713,6 +1833,7 @@ class MainWindow(QMainWindow):
         y_avg = self.azint_data.y_avg
         is_q = self.azint_data.is_q
         self.is_Q = is_q
+        self.toggle_q_action.setChecked(is_q)
         if self.azint_data.E is not None:
             self.E = self.azint_data.E
         
@@ -1757,6 +1878,18 @@ class MainWindow(QMainWindow):
         self.pattern.set_data(y=I[pos], index=index)
         self.pattern.set_pattern_name(name=f"frame {pos}", index=index)
 
+    def open_cif_file(self):
+        """Open a file dialog to select a cif file and add it to the cif tree."""
+        # prompt the user to select a file
+        if self.cif_tree.files and self.cif_tree.files[-1] is not None:
+            default_dir = os.path.dirname(self.cif_tree.files[-1])
+        else:
+            default_dir = os.path.expanduser("~")
+        file_path, ok = QFileDialog.getOpenFileName(self, "Select Crystallographic Information File", default_dir, "CIF Files (*.cif);;All Files (*)")
+        if not ok or not file_path:
+            return
+        # add the file to the file tree
+        self.cif_tree.add_file(file_path)
 
     def add_reference(self, cif_file, Qmax=None):
         """Add a reference pattern from a CIF file."""
@@ -1887,6 +2020,45 @@ class MainWindow(QMainWindow):
             # Convert 2theta to Q
             return 4 * np.pi / (12.398 / self.E) * np.sin(np.radians(np.max(self.pattern.x)) / 2)
         
+    def toggle_q(self):
+        # Toggle between q and 2theta
+        if self.E is None:
+            self.E = self.azint_data.user_E_dialog()
+            if self.E is None:
+                print("Energy not set. Cannot toggle between q and 2theta.")
+                return
+        self.is_Q = not self.is_Q
+        self.toggle_q_action.setChecked(self.is_Q)
+        if self.is_Q:
+            self.heatmap.set_xlabel("q (1/A)")
+            self.pattern.set_xlabel("q (1/A)")
+            x = self.azint_data.get_q()
+            self.heatmap.set_data(x, self.azint_data.get_I().T)
+            self.pattern.x = x
+            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
+            for pattern_item in self.pattern.pattern_items:
+                _x, y = pattern_item.getData()
+                pattern_item.setData(x=x, y=y)
+            for ref_item in self.pattern.reference_items:
+                _x, _y = ref_item.getData()
+                _x = tth_to_q(_x, self.E)
+                ref_item.setData(x=_x, y=_y)
+
+        else:
+            self.heatmap.set_xlabel("2theta (deg)")
+            self.pattern.set_xlabel("2theta (deg)")
+            x = self.azint_data.get_tth()
+            self.heatmap.set_data(x, self.azint_data.get_I().T)
+            self.pattern.x = x
+            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
+            for pattern_item in self.pattern.pattern_items:
+                _x, y = pattern_item.getData()
+                pattern_item.setData(x=x, y=y)
+            for ref_item in self.pattern.reference_items:
+                _x, _y = ref_item.getData()
+                _x = q_to_tth(_x, self.E)
+                ref_item.setData(x=_x, y=_y)
+        
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
@@ -1913,46 +2085,13 @@ class MainWindow(QMainWindow):
 
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
-            if self.E is None:
-                self.E = self.azint_data.user_E_dialog()
-                if self.E is None:
-                    print("Energy not set. Cannot toggle between q and 2theta.")
-                    return
-            self.is_Q = not self.is_Q
-            if self.is_Q:
-                self.heatmap.set_xlabel("q (1/A)")
-                self.pattern.set_xlabel("q (1/A)")
-                x = self.azint_data.get_q()
-                self.heatmap.set_data(x, self.azint_data.get_I().T)
-                self.pattern.x = x
-                self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
-                for pattern_item in self.pattern.pattern_items:
-                    _x, y = pattern_item.getData()
-                    pattern_item.setData(x=x, y=y)
-                for ref_item in self.pattern.reference_items:
-                    _x, _y = ref_item.getData()
-                    _x = tth_to_q(_x, self.E)
-                    ref_item.setData(x=_x, y=_y)
-
-            else:
-                self.heatmap.set_xlabel("2theta (deg)")
-                self.pattern.set_xlabel("2theta (deg)")
-                x = self.azint_data.get_tth()
-                self.heatmap.set_data(x, self.azint_data.get_I().T)
-                self.pattern.x = x
-                self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
-                for pattern_item in self.pattern.pattern_items:
-                    _x, y = pattern_item.getData()
-                    pattern_item.setData(x=x, y=y)
-                for ref_item in self.pattern.reference_items:
-                    _x, _y = ref_item.getData()
-                    _x = q_to_tth(_x, self.E)
-                    ref_item.setData(x=_x, y=_y)
+            self.toggle_q()
+           
 
     def show_help_dialog(self):
         """Show the help dialog."""
         help_text = (
-            "<h2>Help - Plot Azimuthally Integrated Data</h2>"
+            "<h2>Help - plot azimuthally integrated data</h2>"
             "<p>This application allows you to visualize azimuthally integrated data "
             "from HDF5 files and compare them with reference patterns from CIF files.</p>"
             "<h3>Usage</h3>"
@@ -1978,7 +2117,7 @@ class MainWindow(QMainWindow):
     def show_about_dialog(self):
         """Show the about dialog."""
         about_text = (
-            "<h2>plaid - Plot Azimuthally Integrated Data</h2>"
+            "<h2>plaid - plot azimuthally integrated data</h2>"
             "<p>Version 0.1</p>"
             "<p>This application allows you to visualize azimuthally integrated data "
             "from HDF5 files and compare them with reference patterns from CIF files.</p>"
