@@ -10,7 +10,7 @@ including loading data from HDF5 files, converting between q and 2theta, and nor
 
 """
 import numpy as np
-from PyQt6.QtWidgets import  QInputDialog
+from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
 from nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy
 from misc import q_to_tth, tth_to_q
@@ -132,39 +132,26 @@ class AzintData():
             print("I0 data must be a numpy array or a list/tuple.")
             return
         
-        # check if the I0 data are close to unity
-        # otherwise, normalize it and print a warning
-        if self.I0.min() <= 0 or self.I0.max() < 0.5 or self.I0.max() > 2:
-            print("Warning: I0 data should be close to unity and >0. Normalizing it.")
-            print(f"I0 [{self.I0.min():.2e}, {self.I0.max():.2e}] normalized to [{self.I0.min()/self.I0.max():.2f}, 1.00]")
-            self.I0 = self.I0 / np.max(self.I0)
-            self.I0[self.I0<=0] = 1  # Set any zero values to 1 to avoid division by zero
+        # # check if the I0 data are close to unity
+        # # otherwise, normalize it and print a warning
+        # if self.I0.min() <= 0 or self.I0.max() < 0.5 or self.I0.max() > 2:
+        #     message = ("Warning: I0 data should be close to unity and >0. Normalizing it.")
+        #     QMessageBox.warning(self.parent, "I0 Data Warning", message)
+            
+        #     print(f"I0 [{self.I0.min():.2e}, {self.I0.max():.2e}] normalized to [{self.I0.min()/self.I0.max():.2f}, 1.00]")
+        #     self.I0 = self.I0 / np.max(self.I0)
+        #     self.I0[self.I0<=0] = 1  # Set any zero values to 1 to avoid division by zero
 
-        # TEST REMBER TO DELETE THIS
-        print("DEBUG! - Delete after test")
-        if self.I0.shape[0] == 1066:
-            self.I0 = np.append(self.I0, 1)
 
         if self.I is None:
             # Don't normalize (yet)
             return
+        
         if self.I.shape[0]  != self.I0.shape[0]:
             print(f"I0 data shape {self.I0.shape} must match the number of frames {self.I.shape} in the azimuthal integration data.")
             return
 
-        #self.I = self.I / self.I0[:, np.newaxis]  # Normalize the intensity data by I0
- 
 
-
-    # def set_auxiliary_data(self, aux_data):
-    #     """Set auxiliary data"""
-    #     if isinstance(aux_data, dict):
-    #         self.aux_data = aux_data
-    #     elif isinstance(aux_data, (list, tuple)):
-    #         for alias, data in aux_data:
-    #             self.aux_data[alias] = data
-    #     else:
-    #         raise ValueError("Auxiliary data must be a dictionary or a list of tuples.")
 
     def _load_azint(self, fname):
         """Load azimuthal integration data from a nxazint HDF5 file."""
@@ -225,7 +212,8 @@ class AzintData():
     
 
 class AuxData:
-    def __init__(self):
+    def __init__(self,parent=None):
+        self._parent = parent
         self.I0 = None
 
     def set_I0(self, I0):
@@ -236,8 +224,13 @@ class AuxData:
         # check if the I0 data are close to unity
         # otherwise, normalize it and print a warning
         if I0.min() <= 0 or I0.max() < 0.5 or I0.max() > 2:
-            print("Warning: I0 data should be close to unity and >0. Normalizing it.")
-            print(f"I0 [{I0.min():.2e}, {I0.max():.2e}] normalized to [{I0.min()/I0.max():.2f}, 1.00]")
+            if self._parent:
+                message = ("Warning: I0 data should be close to unity and >0. Normalizing it.\n"
+                            f" I0 [{I0.min():.2e}, {I0.max():.2e}] normalized to [{I0.min()/I0.max():.2f}, 1.00]")
+                QMessageBox.warning(self._parent, "I0 Data Warning", message)
+            else:
+                print("Warning: I0 data should be close to unity and >0. Normalizing it.")
+                print(f"I0 [{I0.min():.2e}, {I0.max():.2e}] normalized to [{I0.min()/I0.max():.2f}, 1.00]")
             I0 = I0 / np.max(I0)
             I0[I0<=0] = 1  # Set any zero values to 1 to avoid division by zero
         self.I0 = I0

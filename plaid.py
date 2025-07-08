@@ -34,13 +34,18 @@ from data_containers import AzintData, AuxData
 # - Make a more robust file loading mechanism that can handle different file formats and 
 #   structures, perhaps as a "data class"
 
+# - replace print warnings/messages with QMessageBox dialogs
+
 # - properly remove data from all plots when itemRemoved from the file tree
 
 # - handle auxiliary data drag drop 
 
-# - add functionality to track recent files and references - check if the files are
-#   available and if not, disable the actions in the recent files menu
 # - save additional settings like default path(s), dock widget positions, etc.
+
+# - optimize memory usage and performance for large datasets
+
+# - add more tooltips
+
 
 colors = [
         '#AAAA00',  # Yellow
@@ -569,29 +574,46 @@ class MainWindow(QMainWindow):
         with h5.File(self.h5dialog.file_path, 'r') as f:
             I0 =  f[self.h5dialog.selected_items[0][1]][:]
         
-        target_item = self.file_tree.get_aux_target_name()
-        if not target_item in self.aux_data.keys():
-            self.aux_data[target_item] = AuxData()
-        self.aux_data[target_item].set_I0(I0)
-        #self.azint_data.set_I0(I0)
+        target_name, target_shape = self.file_tree.get_aux_target_name()
+        if not target_name in self.aux_data.keys():
+            self.aux_data[target_name] = AuxData(self)
+        # check if the target shape matches the I0 shape
+        # and account for a possible +-1 mismatch
+        if abs(target_shape[0] - I0.shape[0]) == 1:
+            # if the I0 shape is one more than the target shape, remove the last element
+            if target_shape[0] < I0.shape[0]:
+                message = (f"The I0 shape {I0.shape} does not match the data shape {target_shape}.\n"
+                            f"Trimming the I0 data to match the target shape.")
+                I0 = I0[:-1]
+            # if the I0 shape is one less than the target shape, append with the last element
+            elif target_shape[0] > I0.shape[0]:
+                message = (f"The I0 shape {I0.shape} does not match the target shape {target_shape}.\n"
+                            f"Padding the I0 data to match the target shape.")
+                I0 = np.append(I0, I0[-1])
+            QMessageBox.warning(self, "Shape Mismatch", message)
+        elif target_shape[0] != I0.shape[0]:
+            QMessageBox.critical(self, "Shape Mismatch", f"The I0 shape {I0.shape} does not match the data shape {target_shape}.")
+            return
+        self.aux_data[target_name].set_I0(I0)
+
 
     def add_auxiliary_data(self,is_ok):
         """Add auxiliary data to the azint data instance."""
         if not is_ok:
             return
         aux_data = {}
-        target_item = self.file_tree.get_aux_target_name()
-        if not target_item in self.aux_data.keys():
-            self.aux_data[target_item] = AuxData()
+        target_name, target_shape = self.file_tree.get_aux_target_name()
+        if not target_name in self.aux_data.keys():
+            self.aux_data[target_name] = AuxData(self)
         with h5.File(self.h5dialog.file_path, 'r') as f:
             for [alias,file_path,shape] in self.h5dialog.selected_items:
                 aux_data[alias] =  f[file_path][:]
                 self.file_tree.add_auxiliary_item(alias,shape)
-                self.aux_data[target_item].add_data(alias, f[file_path][:])
+                self.aux_data[target_name].add_data(alias, f[file_path][:])
         
         #self.azint_data.set_auxiliary_data(aux_data)
         # Update the auxiliary plot with the new data
-        self.add_auxiliary_plot(target_item)
+        self.add_auxiliary_plot(target_name)
 
     # MARKED FOR DEPRECATION
     def _add_auxiliary_plot(self):
@@ -699,27 +721,7 @@ class MainWindow(QMainWindow):
             # Toggle between q and 2theta
             self.toggle_q()
 
-        elif event.key() == QtCore.Qt.Key.Key_Space:
-            # DEBUG: Print the dock widget positions
-            print("Dock widget positions:")
-            # find the dockwidgetarea for each dockwidget (left or right)
-            # then sort them according to position (top-bottom)
-            dock_widgets = self.findChildren(QDockWidget)
-            dock_pos = {
-                'left': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.LeftDockWidgetArea],
-                'right': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.RightDockWidgetArea],
-                #'top': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.TopDockWidgetArea],
-                #'bottom': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.BottomDockWidgetArea],
-            }
-            dock_pos["left"] = sorted(dock_pos["left"], key=lambda dock: dock.geometry().y())
-            dock_pos["right"] = sorted(dock_pos["right"], key=lambda dock: dock.geometry().y())
-            for area, docks in dock_pos.items():
-                print(f"{area.capitalize()} Dock Widgets:")
-                for dock in docks:
-                    print(dock.windowTitle(),dock.isVisible())
-                    
-                    #pos = dock.geometry().getRect()
-                    #print(f"  {dock.windowTitle()}: {pos} {dock.isVisible()} {dock.isHidden()}")
+
            
     def _save_dock_settings(self):
         """Save the dock widget settings."""

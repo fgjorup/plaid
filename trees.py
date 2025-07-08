@@ -125,14 +125,17 @@ class FileTreeWidget(QWidget):
         item.addChild(aux_item)
 
     def get_aux_target_name(self):
-        """Get the target item name for auxiliary data."""
+        """Get the target item name and shape for auxiliary data."""
         if self.aux_target_index is None or self.aux_target_index >= len(self.files):
             return None
         # get the target item
         item = self.file_tree.topLevelItem(self.aux_target_index)
         if item is None:
             return None
-        return item.text(0)  # Return the file name of the target item
+        target_name = item.text(0)
+        target_shape = item.text(1).replace('(', '').replace(')', '').replace(' ', '').split(',')
+        target_shape = tuple(int(dim) for dim in target_shape if dim.isdigit())
+        return target_name,target_shape  # Return the file name of the target item
 
         
 

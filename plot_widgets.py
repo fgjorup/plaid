@@ -9,7 +9,7 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 """
 
 import numpy as np
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
 from PyQt6 import QtCore
 import pyqtgraph as pg
 
@@ -301,6 +301,21 @@ class PatternWidget(QWidget):
 
         self.set_xlabel("radial axis")
         self.set_ylabel("intensity")
+
+        # add a toolbar to the widget
+        # Possible actions?
+        # - export average pattern
+        # - export current pattern(s)
+        # - export all patterns
+        # - fix current pattern(s)
+        # - subtract current pattern(s)
+        
+        # self.toolbar = QToolBar(self)
+        # self.toolbar.setOrientation(QtCore.Qt.Orientation.Vertical)
+        # # Add actions to the toolbar
+        # action = self.toolbar.addAction("Add Pattern")
+        # layout.addWidget(self.toolbar)
+
 
     def add_pattern(self):
         """Add a new pattern item to the plot."""
