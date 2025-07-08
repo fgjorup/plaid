@@ -38,7 +38,9 @@ from data_containers import AzintData, AuxData
 
 # - handle auxiliary data drag drop 
 
-
+# - add functionality to track recent files and references - check if the files are
+#   available and if not, disable the actions in the recent files menu
+# - save additional settings like default path(s), dock widget positions, etc.
 
 colors = [
         '#AAAA00',  # Yellow
@@ -49,6 +51,76 @@ colors = [
         "#0066FF",  # Blue
         '#AAAAAA',  # Light Gray
         ]
+
+def read_settings():
+    """Read the application settings from a file."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    print(settings.allKeys())
+
+def write_settings():
+    """Write the application settings to a file."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    settings.setValue("recent-files", [])
+    settings.setValue("recent-references", [])
+
+def save_recent_files_settings(recent_files):
+    """
+    Save the recent files settings.
+    Save up to 10 recent files, avoid duplicates, and remove any empty entries.
+    If the list exceeds 10 files, remove the oldest file.
+    """
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    # Read the existing recent files
+    existing_files = settings.value("recent-files", [], type=list)
+    # Remove duplicates and empty entries
+    recent_files = list(set(recent_files + existing_files))
+    recent_files = [f for f in recent_files if f]  # Remove empty entries
+    # Limit to the last 10 files
+    if len(recent_files) > 10:
+        recent_files = recent_files[-10:]
+    # Save the recent files
+    settings.setValue("recent-files", recent_files)
+    settings.endGroup()
+
+def read_recent_files_settings():
+    """Read the recent files settings from a file."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    recent_files = settings.value("recent-files", [], type=list)
+    settings.endGroup()
+    return recent_files
+
+
+def save_recent_refs_settings(recent_refs):
+    """
+    Save the recent references settings.
+    Save up to 10 recent references, avoid duplicates, and remove any empty entries.
+    If the list exceeds 10 references, remove the oldest reference.
+    """
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    # Read the existing recent references
+    existing_refs = settings.value("recent-references", [], type=list)
+    # Remove duplicates and empty entries
+    recent_refs = list(set(recent_refs + existing_refs))
+    recent_refs = [r for r in recent_refs if r]  # Remove empty entries
+    # Limit to the last 10 references
+    if len(recent_refs) > 10:
+        recent_refs = recent_refs[-10:]
+    # Save the recent references
+    settings.setValue("recent-references", recent_refs)
+    settings.endGroup()
+
+def read_recent_refs_settings():
+    """Read the recent references settings from a file."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    recent_refs = settings.value("recent-references", [], type=list)
+    settings.endGroup()
+    return recent_refs
+
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -96,7 +168,6 @@ class MainWindow(QMainWindow):
         file_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         file_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         file_tree_dock.setWidget(self.file_tree)
-        self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, file_tree_dock)
 
         # Create the CIF tree widget
         self.cif_tree = CIFTreeWidget()
@@ -105,7 +176,6 @@ class MainWindow(QMainWindow):
         cif_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         cif_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         cif_tree_dock.setWidget(self.cif_tree)
-        self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, cif_tree_dock)
   
         self.auxiliary_plot = AuxiliaryPlotWidget()
         # create a dock widget for the auxiliary plot
@@ -114,7 +184,26 @@ class MainWindow(QMainWindow):
         auxiliary_plot_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         auxiliary_plot_dock.setWidget(self.auxiliary_plot)
         
-        self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, auxiliary_plot_dock)
+        # get the current dock widget settings (if any)
+        left, right = self._load_dock_settings()
+        # if settings for all three dock widgets are available
+        if len(left) + len(right) == 3:
+            dock_widgets = {file_tree_dock.windowTitle(): file_tree_dock,
+                            cif_tree_dock.windowTitle(): cif_tree_dock,
+                            auxiliary_plot_dock.windowTitle(): auxiliary_plot_dock}
+            for [key,is_visible] in left:
+                dock = dock_widgets[key]
+                self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, dock)
+                dock.setVisible(is_visible)
+            for [key,is_visible] in right:
+                dock = dock_widgets[key]
+                self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
+                dock.setVisible(is_visible)
+
+        else:
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, file_tree_dock)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, cif_tree_dock)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, auxiliary_plot_dock)
 
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
  
@@ -151,6 +240,22 @@ class MainWindow(QMainWindow):
         open_action.setToolTip("Open an HDF5 file")
         open_action.triggered.connect(self.open_file)
         file_menu.addAction(open_action)
+        
+        # add a menu with actions to open recent files
+        recent_files = read_recent_files_settings()
+        recent_menu = file_menu.addMenu("Open &Recent")
+        if recent_files:
+            recent_menu.setEnabled(True)
+            recent_menu.setToolTip("Open a recent file")
+            for file in recent_files:
+                action = QAction(file, self)
+                action.setToolTip(f"Open {file}")
+                action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
+                action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
+                recent_menu.addAction(action)
+        else:
+            recent_menu.setEnabled(False)
+            recent_menu.setToolTip("No recent files available")
 
         file_menu.addSeparator()
 
@@ -159,6 +264,24 @@ class MainWindow(QMainWindow):
         load_cif_action.setToolTip("Load a reference from a CIF file")
         load_cif_action.triggered.connect(self.open_cif_file)
         file_menu.addAction(load_cif_action)
+
+        # add a menu to load recent references
+        recent_refs = read_recent_refs_settings()
+        recent_references_menu = file_menu.addMenu("Load Re&cent")
+        if recent_refs:
+            recent_references_menu.setEnabled(True)
+            recent_references_menu.setToolTip("Load a recent reference")
+            for ref in recent_refs:
+                action = QAction(ref, self)
+                action.setToolTip(f"Load {ref}")
+                action.triggered.connect(lambda checked, r=ref: self.cif_tree.add_file(r))
+                action.setDisabled(not os.path.exists(ref))
+                recent_references_menu.addAction(action)
+        else:
+            recent_references_menu.setEnabled(False)
+            recent_references_menu.setToolTip("No recent references available")
+
+
 
 
         # create a view menu
@@ -205,9 +328,9 @@ class MainWindow(QMainWindow):
 
 
         # TEST
-        fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\raw\pxrd_cryo\scan-0100.h5"
-        aname = fname.replace("\\raw", "\\process\\azint").replace(".h5", "_pilatus_integrated.h5")
-        self.file_tree.add_file(aname)
+        #fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\raw\pxrd_cryo\scan-0100.h5"
+        #aname = fname.replace("\\raw", "\\process\\azint").replace(".h5", "_pilatus_integrated.h5")
+        #self.file_tree.add_file(aname)
         #self.load_file(aname)
         #self.load_auxiliary_data(fname)
         #h5dialog = H5Dialog(self, fname)
@@ -575,7 +698,58 @@ class MainWindow(QMainWindow):
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
             self.toggle_q()
+
+        elif event.key() == QtCore.Qt.Key.Key_Space:
+            # DEBUG: Print the dock widget positions
+            print("Dock widget positions:")
+            # find the dockwidgetarea for each dockwidget (left or right)
+            # then sort them according to position (top-bottom)
+            dock_widgets = self.findChildren(QDockWidget)
+            dock_pos = {
+                'left': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.LeftDockWidgetArea],
+                'right': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.RightDockWidgetArea],
+                #'top': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.TopDockWidgetArea],
+                #'bottom': [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.BottomDockWidgetArea],
+            }
+            dock_pos["left"] = sorted(dock_pos["left"], key=lambda dock: dock.geometry().y())
+            dock_pos["right"] = sorted(dock_pos["right"], key=lambda dock: dock.geometry().y())
+            for area, docks in dock_pos.items():
+                print(f"{area.capitalize()} Dock Widgets:")
+                for dock in docks:
+                    print(dock.windowTitle(),dock.isVisible())
+                    
+                    #pos = dock.geometry().getRect()
+                    #print(f"  {dock.windowTitle()}: {pos} {dock.isVisible()} {dock.isHidden()}")
            
+    def _save_dock_settings(self):
+        """Save the dock widget settings."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("MainWindow")
+        settings.beginGroup("DockWidgets")
+        # Find all dock widgets and sort them by area
+        dock_widgets = self.findChildren(QDockWidget)
+        left = [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.LeftDockWidgetArea]
+        right = [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.RightDockWidgetArea]
+        # Sort the dock widgets by their y position
+        left = sorted(left, key=lambda dock: dock.geometry().y())
+        right = sorted(right, key=lambda dock: dock.geometry().y())
+        # Save the left and right dock widget positions as lists of tuples
+        settings.setValue("left_docks", [(dock.windowTitle(), dock.isVisible()) for dock in left])
+        settings.setValue("right_docks", [(dock.windowTitle(), dock.isVisible()) for dock in right])
+        settings.endGroup()  # End DockWidgets group
+        settings.endGroup()  # End MainWindow group
+        
+    def _load_dock_settings(self):
+        """Load the dock widget settings (relative position and isVisible)."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("MainWindow")
+        settings.beginGroup("DockWidgets")
+        # Load the left and right dock widget positions
+        left_docks = settings.value("left_docks", [], type=list)
+        right_docks = settings.value("right_docks", [], type=list)
+        settings.endGroup()
+        settings.endGroup()  # End MainWindow group
+        return left_docks, right_docks
 
     def show_help_dialog(self):
         """Show the help dialog."""
@@ -624,6 +798,15 @@ class MainWindow(QMainWindow):
         super().show()
         self.update_pattern_geometry()
 
+    def closeEvent(self, event):
+        """Handle the close event to save settings."""
+        recent_files = self.file_tree.files
+        save_recent_files_settings(recent_files)
+        recent_refs = self.cif_tree.files
+        save_recent_refs_settings(recent_refs)
+        self._save_dock_settings()
+        event.accept()
+
 if __name__ == "__main__":
     app = QApplication(sys.argv)
 
@@ -637,4 +820,5 @@ if __name__ == "__main__":
                         )
     window = MainWindow()
     window.show()
+
     sys.exit(app.exec())

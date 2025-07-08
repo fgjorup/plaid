@@ -52,7 +52,7 @@ class FileTreeWidget(QWidget):
 
     def add_file(self, file_path):
         """Add a file to the tree widget."""
-        
+        file_path = os.path.abspath(file_path)
         ###
         # the following should probably be moved to the main application
         
@@ -265,6 +265,7 @@ class CIFTreeWidget(QWidget):
 
     def add_file(self, file_path):
         """Add a CIF file to the tree widget."""
+        file_path = os.path.abspath(file_path)
         if not file_path.endswith('.cif'):
             return
         file_name = os.path.basename(file_path)
@@ -272,7 +273,7 @@ class CIFTreeWidget(QWidget):
         for i in range(self.file_tree.topLevelItemCount()):
             item = self.file_tree.topLevelItem(i)
             if item.text(0) == file_name:
-                # If the file is already in the tree, emit the signal and return
+                # If the file is already in the tree
                 return
         # Validate the CIF file
         if not validate_cif(file_path):
