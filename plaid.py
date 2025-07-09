@@ -31,6 +31,7 @@ from data_containers import AzintData, AuxData
 # - Add a button to save the average pattern
 # - Add a button to save the selected pattern(s)
 # - Expand the Help menu 
+
 # - Make a more robust file loading mechanism that can handle different file formats and 
 #   structures, perhaps as a "data class"
 
@@ -152,8 +153,6 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.centralWidget().setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        
-
 
         self.heatmap = HeatmapWidget()
 
@@ -254,7 +253,8 @@ class MainWindow(QMainWindow):
             for file in recent_files:
                 action = QAction(file, self)
                 action.setToolTip(f"Open {file}")
-                action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
+                # action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
+                action.triggered.connect(lambda checked, f=file: self.open_file(f))
                 action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
                 recent_menu.addAction(action)
         else:
@@ -422,21 +422,25 @@ class MainWindow(QMainWindow):
             status_text += f"Y: {y_value:7.3f}"
         self.statusBar().showMessage(status_text)
 
-    def open_file(self):
+    def open_file(self,file_path=None):
         """
         Open a file dialog to select an azimuthal integration file
         and add it to the file tree.
         """
-        # prompt the user to select a file
-        if self.file_tree.files and self.file_tree.files[-1] is not None:
-            default_dir = os.path.dirname(self.file_tree.files[-1])
-        else:
-            default_dir = os.path.expanduser("~")
-        file_path, ok = QFileDialog.getOpenFileName(self, "Select Azimuthal Integration File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
-        if not ok or not file_path:
-            return
-        # add the file to the file tree
-        self.file_tree.add_file(file_path)
+        if file_path is None:
+            # prompt the user to select a file
+            if self.file_tree.files and self.file_tree.files[-1] is not None:
+                default_dir = os.path.dirname(self.file_tree.files[-1])
+            else:
+                default_dir = os.path.expanduser("~")
+            file_path, ok = QFileDialog.getOpenFileName(self, "Select Azimuthal Integration File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
+            if not ok or not file_path:
+                return
+        self.load_file(file_path)
+        shape  = self.azint_data.shape
+        if shape is not None:
+            # add the file to the file tree
+            self.file_tree.add_file(file_path,shape)
         
 
     def load_file(self, file_path, item=None):
@@ -718,7 +722,14 @@ class MainWindow(QMainWindow):
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
                 self.cif_tree.dropEvent(event)
             elif all(url.toLocalFile().endswith('.h5') for url in event.mimeData().urls()):
-                self.file_tree.dropEvent(event)
+                #self.file_tree.dropEvent(event)
+                for url in event.mimeData().urls():
+                    file_path = url.toLocalFile()
+                    if file_path.endswith('.h5'):
+                        self.open_file(file_path)
+                event.acceptProposedAction()
+
+
 
     def keyReleaseEvent(self, event):
         """Handle key release events."""

@@ -12,8 +12,6 @@ import os
 from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 from PyQt6 import QtCore
 import pyqtgraph as pg
-import h5py as h5
-from nexus import get_nx_default, get_nx_signal
 from reference import validate_cif
 
 colors = [
@@ -48,56 +46,11 @@ class FileTreeWidget(QWidget):
 
         layout.addWidget(self.file_tree)
 
-        self.setAcceptDrops(True)
+        #self.setAcceptDrops(True)
 
-    def add_file(self, file_path):
+    def add_file(self, file_path,shape):
         """Add a file to the tree widget."""
         file_path = os.path.abspath(file_path)
-        ###
-        # the following should probably be moved to the main application
-        
-        if not file_path.endswith('.h5'):
-            return
-        # try to read the file to get its shape
-        try:
-            with h5.File(file_path, 'r') as f:
-                default = get_nx_default(f)
-                signal = get_nx_signal(default)
-                if not signal is None:
-                    shape = signal.shape
-                elif 'entry' in f and 'default' in f['entry'].attrs:
-                    dset = f['entry'][f['entry'].attrs['default']]
-                    if 'signal' in dset.attrs:
-                        shape = dset[dset.attrs['signal']].shape
-                    elif 'I' in dset:
-                        shape = dset['I'].shape
-                elif 'entry/data1d' in f:
-                    dset = f['entry/data1d']
-                    shape = dset['I'].shape
-                elif 'entry/data' in f:
-                    dset = f['entry/data']
-                    shape = dset['I'].shape
-                elif 'I' in f:
-                    dset = f['I']
-                    shape = dset.shape
-                else:
-                    print(f.keys())
-                    return
-        except Exception as e:
-            print(f"Error reading file {file_path}: {e}")
-            return
-        
-        ### end
-        
-        # self.files.append(file_path)
-        # file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
-        # # check if the file is already in the tree
-        # for i in range(self.file_tree.topLevelItemCount()):
-        #     item = self.file_tree.topLevelItem(i)
-        #     if item.text(0) == file_name:
-        #         # If the file is already in the tree, update its shape
-        #         item.setText(1, shape.__str__())
-        #         return
 
         # check if the file is already in self.files
         if file_path in self.files:
@@ -159,14 +112,14 @@ class FileTreeWidget(QWidget):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
     
-    def dropEvent(self, event):
-        """Handle drop event."""
-        if event.mimeData().hasUrls():
-            for url in event.mimeData().urls():
-                file_path = url.toLocalFile()
-                if file_path.endswith('.h5'):
-                    self.add_file(file_path)
-            event.acceptProposedAction()
+    # def dropEvent(self, event):
+    #     """Handle drop event."""
+    #     if event.mimeData().hasUrls():
+    #         for url in event.mimeData().urls():
+    #             file_path = url.toLocalFile()
+    #             if file_path.endswith('.h5'):
+    #                 self.add_file(file_path)
+    #         event.acceptProposedAction()
 
     def itemDoubleClicked(self, item, column):
         """Handle item double click event."""

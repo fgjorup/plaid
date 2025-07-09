@@ -30,6 +30,8 @@ class AzintData():
         self.is_q = False
         self.E = None
         self.I0 = None
+        self.shape = None  # Shape of the intensity data
+        self._load_func = None
         #self.aux_data = {} # {alias: np.array}
 
     def load(self):
@@ -43,25 +45,16 @@ class AzintData():
             print("File(s) are not HDF5 files.")
             return False
         
-        # check the first file to determine the type
-        # assume the first file is representative of the others
-        with h5.File(self.fnames[0], 'r') as f:
-            if 'entry/data1d' in f:
-                load_func = self._load_azint_old
-            elif 'entry/data' in f:
-                load_func = self._load_azint
-            elif 'I' in f:
-                load_func = self._load_DM_old
-            # here one could add an option for a custom load function
-            # elif not CUSTOM_LOAD_FUNC is None:
-            #     load_func = CUSTOM_LOAD_FUNC
-            else:
-                print("File type not recognized. Please provide a valid azimuthal integration file.")
+        if self._load_func is None:
+            # Determine the load function based on the first file
+            self._determine_load_func(self.fnames[0])
+            if self._load_func is None:
+                print("No valid load function found. Please provide a valid azimuthal integration file.")
                 return False
 
         I = np.array([[],[]])
         for fname in self.fnames:
-            x, I_, is_q, E = load_func(fname)
+            x, I_, is_q, E = self._load_func(fname)
             I = np.append(I, I_, axis=0) if I.size else I_
         #I = np.array(I)
         self.x = x
@@ -69,7 +62,7 @@ class AzintData():
         self.is_q = is_q
         self.E = E
         self.y_avg = I.mean(axis=0)
-        
+        self.shape = I.shape
         return True
 
     def user_E_dialog(self):
@@ -121,7 +114,7 @@ class AzintData():
             # Normalize the intensity data by I0
             I = I / self.I0[:, np.newaxis]
         return I
-    
+
     def set_I0(self, I0):
         """Set the I0 data."""
         if isinstance(I0, np.ndarray):
@@ -151,7 +144,18 @@ class AzintData():
             print(f"I0 data shape {self.I0.shape} must match the number of frames {self.I.shape} in the azimuthal integration data.")
             return
 
-
+    def _determine_load_func(self, fname):
+        """Determine the appropriate load function based on the file structure."""
+        with h5.File(fname, 'r') as f:
+            if 'entry/data1d' in f:
+                self._load_func =  self._load_azint_old
+            elif 'entry/data' in f:
+                self._load_func =   self._load_azint
+            elif 'I' in f:
+                self._load_func =   self._load_DM_old
+            else:
+                print("File type not recognized. Please provide a valid azimuthal integration file.")
+                self._load_func =   None
 
     def _load_azint(self, fname):
         """Load azimuthal integration data from a nxazint HDF5 file."""
