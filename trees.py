@@ -9,7 +9,7 @@ This module provides classes to create tree widgets for managing files and CIFs.
 
 """
 import os
-from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QMenu
+from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
@@ -252,8 +252,10 @@ class FileTreeWidget(QWidget):
 class CIFTreeWidget(QWidget):
     sigItemAdded = QtCore.pyqtSignal(str)
     sigItemChecked = QtCore.pyqtSignal(int, bool)
+    sigItemDoubleClicked = QtCore.pyqtSignal(int, str)
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.parent = parent
         self.files = []  # List to store CIF file paths
         # Create a layout
         layout = QVBoxLayout(self)
@@ -262,6 +264,7 @@ class CIFTreeWidget(QWidget):
         self.file_tree.setHeaderLabels(['CIF file name'])
         self.file_tree.setSortingEnabled(False)
         self.file_tree.itemChanged.connect(self.itemChecked)
+        self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         layout.addWidget(self.file_tree)
 
         self.setAcceptDrops(True)
@@ -280,7 +283,7 @@ class CIFTreeWidget(QWidget):
                 return
         # Validate the CIF file
         if not validate_cif(file_path):
-            print(f"Invalid CIF file: {file_path}")
+            QMessageBox.critical(self.parent, "Invalid CIF", f"The file {file_name} is not recognized as a valid CIF file.")
             return
         self.files.append(file_path)
         item = QTreeWidgetItem([file_name])
@@ -310,6 +313,13 @@ class CIFTreeWidget(QWidget):
             return
         checked = item.checkState(column) == QtCore.Qt.CheckState.Checked
         self.sigItemChecked.emit(index, checked)
+
+    def itemDoubleClicked(self, item, column):
+        """Handle item double click event."""
+        index = self.file_tree.indexOfTopLevelItem(item)
+        if index == -1:
+            return
+        self.sigItemDoubleClicked.emit(index,item.text(0))
 
 
 

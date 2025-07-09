@@ -383,6 +383,18 @@ class PatternWidget(QWidget):
         reference_item.setVisible(is_checked)
         self.hkl_text_item.setVisible(False)  # Hide the text item when toggling reference visibility
 
+    def rescale_reference(self,index):
+        """Rescale the intensity of the indexed reference to the current y-max"""
+        reference_item = self.reference_items[index]
+        x, I = reference_item.getData()
+        I /= I.max()  # Normalize the intensity to the maximum value
+        if self.y is None or len(self.y) == 0:
+            scale = 100
+        else:
+            scale = self.y.max()
+        reference_item.setData(x, I*scale)  # Rescale the reference pattern
+        
+
 
     def reference_clicked(self, item, event):
         """Handle the click event on a reference pattern."""

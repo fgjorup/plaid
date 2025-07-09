@@ -175,7 +175,7 @@ class MainWindow(QMainWindow):
         file_tree_dock.setWidget(self.file_tree)
 
         # Create the CIF tree widget
-        self.cif_tree = CIFTreeWidget()
+        self.cif_tree = CIFTreeWidget(self)
         # create a dock widget for the CIF tree
         cif_tree_dock = QDockWidget("CIF Tree", self)
         cif_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
@@ -219,6 +219,7 @@ class MainWindow(QMainWindow):
 
         self.cif_tree.sigItemAdded.connect(self.add_reference)
         self.cif_tree.sigItemChecked.connect(self.toggle_reference)
+        self.cif_tree.sigItemDoubleClicked.connect(self.rescale_reference)
 
         self.heatmap.sigHLineMoved.connect(self.hline_moved)
         self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange)
@@ -443,7 +444,7 @@ class MainWindow(QMainWindow):
 
         self.azint_data = AzintData(self,[file_path])
         if not self.azint_data.load():
-            print(f"Failed to load file: {file_path}")
+            QMessageBox.critical(self, "Error", f"Failed to load file: {file_path}")
             return
         x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
         I = self.azint_data.get_I()
@@ -513,7 +514,7 @@ class MainWindow(QMainWindow):
         if self.E is None:
             self.E = self.azint_data.user_E_dialog()
             if self.E is None:
-                print("Energy not set. Cannot add reference pattern.")
+                QMessageBox.critical(self, "Error", "Energy not set. Cannot add reference pattern.")
                 return
         if Qmax is None:
             Qmax = self.getQmax()
@@ -526,7 +527,7 @@ class MainWindow(QMainWindow):
             Qmax = self.getQmax()
         hkl, d, I = self.ref.get_reflections(Qmax=Qmax, dmin=dmin)
         if len(hkl) == 0:
-            print("No reflections found in the reference pattern.")
+            QMessageBox.warning(self, "No Reflections", "No reflections found in the reference pattern.")
             return
         
         if self.is_Q:
@@ -541,6 +542,10 @@ class MainWindow(QMainWindow):
     def toggle_reference(self, index, is_checked):
         """Toggle the visibility of the reference pattern."""
         self.pattern.toggle_reference(index, is_checked)
+
+    def rescale_reference(self,index,name):
+        """Rescale the intensity of the indexed reference to the current y-max"""
+        self.pattern.rescale_reference(index)
 
     def load_I0_data(self, fname=None):
         """Load auxillary data as I0"""
@@ -630,7 +635,7 @@ class MainWindow(QMainWindow):
     def add_auxiliary_plot(self, selected_item):
         """Add an auxiliary plot"""
         if not selected_item in self.aux_data:
-            print("No auxiliary data available.")
+            QMessageBox.warning(self, "No Auxiliary Data", f"No auxiliary data available for {selected_item}.")
             return
         self.auxiliary_plot.clear_plot()  # Clear the previous plot
         for alias, data in self.aux_data[selected_item].get_dict().items():
@@ -659,7 +664,7 @@ class MainWindow(QMainWindow):
         if self.E is None:
             self.E = self.azint_data.user_E_dialog()
             if self.E is None:
-                print("Energy not set. Cannot toggle between q and 2theta.")
+                QMessageBox.critical(self, "Error", "Energy not set. Cannot toggle between q and 2theta.")
                 return
         self.is_Q = not self.is_Q
         self.toggle_q_action.setChecked(self.is_Q)
