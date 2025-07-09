@@ -36,8 +36,6 @@ from data_containers import AzintData, AuxData
 
 # - replace print warnings/messages with QMessageBox dialogs
 
-# - properly remove data from all plots when itemRemoved from the file tree
-
 # - handle auxiliary data drag drop 
 
 # - save additional settings like default path(s), dock widget positions, etc.
@@ -368,12 +366,14 @@ class MainWindow(QMainWindow):
 
     def remove_file(self, file):
         """Handle the removal of a file from the file tree."""
-        if self.azint_data.fnames is None or file not in self.azint_data.fnames:
-            return
-        self.azint_data = AzintData(self)
-        self.heatmap.clear()
-        self.pattern.clear()
-        self.auxiliary_plot.clear()
+        if file in self.azint_data.fnames:
+            self.azint_data = AzintData(self)
+            self.heatmap.clear()
+            self.pattern.clear()
+            self.auxiliary_plot.clear()
+
+        if file in self.aux_data.keys():
+            del self.aux_data[file]
 
 
     def resizeEvent(self, event):
@@ -459,13 +459,21 @@ class MainWindow(QMainWindow):
         self.auxiliary_plot.clear_plot()  # Clear the previous plot
         if item is not None:
             # check if the item has I0 data
-            if item.text(0) in self.aux_data:
-                I0 = self.aux_data[item.text(0)].get_data('I0')
+            if item.toolTip(0) in self.aux_data:
+                I0 = self.aux_data[item.toolTip(0)].get_data('I0')
                 if I0 is not None:
                     self.azint_data.set_I0(I0)
-                if len(self.aux_data[item.text(0)].keys()) > 1:
+                if len(self.aux_data[item.toolTip(0)].keys()) > 1:
                     # if there are more keys, plot the auxiliary data
-                    self.add_auxiliary_plot(item.text(0))
+                    self.add_auxiliary_plot(item.toolTip(0))
+            # # check if the item has I0 data
+            # if item.text(0) in self.aux_data:
+            #     I0 = self.aux_data[item.text(0)].get_data('I0')
+            #     if I0 is not None:
+            #         self.azint_data.set_I0(I0)
+            #     if len(self.aux_data[item.text(0)].keys()) > 1:
+            #         # if there are more keys, plot the auxiliary data
+            #         self.add_auxiliary_plot(item.text(0))
 
 
         # Update the heatmap with the new data

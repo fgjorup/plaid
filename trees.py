@@ -89,18 +89,32 @@ class FileTreeWidget(QWidget):
         
         ### end
         
+        # self.files.append(file_path)
+        # file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
+        # # check if the file is already in the tree
+        # for i in range(self.file_tree.topLevelItemCount()):
+        #     item = self.file_tree.topLevelItem(i)
+        #     if item.text(0) == file_name:
+        #         # If the file is already in the tree, update its shape
+        #         item.setText(1, shape.__str__())
+        #         return
 
-        self.files.append(file_path)
-        file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
-        # check if the file is already in the tree
-        for i in range(self.file_tree.topLevelItemCount()):
-            item = self.file_tree.topLevelItem(i)
-            if item.text(0) == file_name:
-                # If the file is already in the tree, update its shape
+        # check if the file is already in self.files
+        if file_path in self.files:
+            # If the file is already in the list, update its shape
+            index = self.files.index(file_path)
+            item = self.file_tree.topLevelItem(index)
+            if item is not None:
                 item.setText(1, shape.__str__())
-                return
+            return
+        # add the file to the list
+        self.files.append(file_path)
+        # get the file name
+        file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
+        
         # Create a new tree item for the file
-        item = pg.TreeWidgetItem([file_name,shape.__str__()])
+        item = QTreeWidgetItem([file_name, shape.__str__()])
+        item.setToolTip(0, file_path)  # Set the tooltip to the full file path
         self.file_tree.addTopLevelItem(item)
         # Optionally, you can expand the item
         item.setExpanded(True)
@@ -132,7 +146,8 @@ class FileTreeWidget(QWidget):
         item = self.file_tree.topLevelItem(self.aux_target_index)
         if item is None:
             return None
-        target_name = item.text(0)
+        # target_name = item.text(0)
+        target_name = item.toolTip(0)  # Get the full file path as the target name
         target_shape = item.text(1).replace('(', '').replace(')', '').replace(' ', '').split(',')
         target_shape = tuple(int(dim) for dim in target_shape if dim.isdigit())
         return target_name,target_shape  # Return the file name of the target item
