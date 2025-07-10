@@ -8,7 +8,8 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides dialogs classes to select and manage HDF5 files and their content.
 
 """
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QDialog, QPushButton
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QDialog, QPushButton, QLineEdit, QCheckBox, QRadioButton, QButtonGroup, QSpinBox, QLabel, QApplication, QGroupBox
+from PyQt6.QtGui import QRegularExpressionValidator
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
@@ -215,6 +216,243 @@ class H5Dialog(QDialog):
             return ' × '.join([str(s) for s in shape])
         return str(shape)
     
+    # make a regular expression for valid file extensions
+
+
+class ExportSettingsDialog(QDialog):
+    """A dialog to set export settings."""
+
+    sigSaveAsDefault = QtCore.pyqtSignal(dict)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Export Settings")
+        self.setLayout(QVBoxLayout())
+
+        # Add a restore default button in the upper right corner
+        self.restore_default_button = QPushButton("Restore Default")
+        self.restore_default_button.setToolTip("Restore the default settings")
+        self.restore_default_button.clicked.connect(self.restore_default)
+        self.layout().addWidget(self.restore_default_button, alignment=QtCore.Qt.AlignmentFlag.AlignRight)
+
+        self._filename()  # Add file name settings
+        self._fileformat()  # Add file format settings
+        self._dataformat()  # Add data format settings
+        
+
+        # get the default settings in case it is necessary to revert
+        self._default_settings = self.get_settings()
+        # get the current settings in case the user rejects the dialog
+        self._previous_settings = self.get_settings()
+
+        layout = QHBoxLayout()
+        self.layout().addLayout(layout)
+
+        # add a save as default button
+        self.save_button = QPushButton("Save as Default")
+        self.save_button.setToolTip("Save the current settings")
+        self.save_button.clicked.connect(self.save_as_default)
+        layout.addWidget(self.save_button)
+        layout.addStretch(1)  # Add stretchable space to the right of the button
+
+        # Add a button to accept the settings
+        self.accept_button = QPushButton("Accept")
+        self.accept_button.clicked.connect(self.accept)
+        # Set the accept button as the default button (activated by pressing Enter)
+        self.accept_button.setDefault(True)
+        layout.addWidget(self.accept_button)
+
+        # Add a button to cancel the dialog
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        layout.addWidget(self.cancel_button)
+
+    def _filename(self):
+        # Add a group box for file name settings
+        group = QGroupBox("File Name Settings")
+        self.layout().addWidget(group)
+        group_layout = QVBoxLayout()
+        group.setLayout(group_layout)
+        
+        # extension validator for 1-3 lowercase letters
+        validator = QRegularExpressionValidator(QtCore.QRegularExpression(r"^[a-z]{1,3}$"))
+        
+        # Add a line edit for the file extension
+        label = QLabel("File Extension:")
+        self.extension_edit = QLineEdit()
+        self.extension_edit.setText("xy")
+        self.extension_edit.setValidator(validator)
+        self.extension_edit.setToolTip(("File extension (1-3 lowercase letters)\n"
+                                        "e.g. 'xy', 'dat', 'txt'.\n"
+                                        "NB: Does not affect the content of the file,\n"
+                                        "only the file name."))
+        self.extension_edit.setMaximumWidth(50)  # Set a maximum width for the line edit
+        layout = QHBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(self.extension_edit)
+        layout.addStretch(1)  # Add stretchable space to the right of the line edit
+        group_layout.addLayout(layout)
+
+        # Add a spinbox for leading zeros
+        label = QLabel("Leading Zeros:")
+        self.leading_zeros_spinbox = QSpinBox()
+        self.leading_zeros_spinbox.setRange(0, 9)
+        self.leading_zeros_spinbox.setValue(4) # Default to 4 leading zeros
+        self.leading_zeros_spinbox.setToolTip("Number of leading zeros for the exported file names")
+        layout = QHBoxLayout()
+        layout.addWidget(label)
+        layout.addWidget(self.leading_zeros_spinbox)
+        layout.addStretch(1)  # Add stretchable space to the right of the line edit
+        group_layout.addLayout(layout)
+
+
+    def _fileformat(self):
+        # Add a group box for file format settings
+        group = QGroupBox("File Format Settings")
+        self.layout().addWidget(group)
+        group_layout = QVBoxLayout()
+        group.setLayout(group_layout)
+
+        # Add a checkbox for header inclusion
+        self.header_checkbox = QCheckBox("Include Header")
+        self.header_checkbox.setChecked(True)  # Default to including header
+        self.header_checkbox.setToolTip("Include header in the exported file")
+        group_layout.addWidget(self.header_checkbox)
+
+        # Add a checkbox for scientific string formatting
+        self.scientific_checkbox = QCheckBox("Scientific notation")
+        self.scientific_checkbox.setChecked(False)  # Default to not using scientific notation
+        self.scientific_checkbox.setToolTip("Use scientific notation for numbers")
+        group_layout.addWidget(self.scientific_checkbox)
+
+        # Add radio buttons for delimiter selection
+        self.delimiter_radio_group = QButtonGroup()
+        self.space_radio = QRadioButton("Space")
+        self.space_radio.setChecked(True)  # Default to space delimiter
+        self.space_radio.setToolTip("Use space as delimiter")
+        self.tab_radio = QRadioButton("Tab")
+        self.tab_radio.setToolTip("Use tab as delimiter")
+        self.delimiter_radio_group.addButton(self.space_radio)
+        self.delimiter_radio_group.addButton(self.tab_radio)
+        group_layout.addWidget(self.space_radio)
+        group_layout.addWidget(self.tab_radio)
+
+    def _dataformat(self):
+        # Add a group box for data format settings
+        group = QGroupBox("Data Format Settings")
+        self.layout().addWidget(group)
+        group_layout = QVBoxLayout()
+        group.setLayout(group_layout)
+
+
+
+        # Add a checkbox for I0 normalization
+        self.I0_checkbox = QCheckBox("I0 Normalized")
+        self.I0_checkbox.setToolTip("Normalize by I0 (if available)")
+        group_layout.addWidget(self.I0_checkbox)
+
+        # Add radio buttons for Q/2theta selection
+        self.tth_Q_radio_group = QButtonGroup()
+        self.tth_radio = QRadioButton("2θ")
+        self.tth_radio.setChecked(True)  # Default to 2theta
+        self.tth_radio.setToolTip("Export data in 2θ")
+        self.Q_radio = QRadioButton("Q")
+        self.Q_radio.setToolTip("Export data in Q")
+        self.tth_Q_radio_group.addButton(self.tth_radio)
+        self.tth_Q_radio_group.addButton(self.Q_radio)
+        group_layout.addWidget(self.tth_radio)
+        group_layout.addWidget(self.Q_radio)
+
+    def get_settings(self):
+        """
+        Get the current settings as a dictionary.
+        
+        extension_edit: str  
+        leading_zeros_spinbox: int  
+        header_checkbox: bool  
+        scientific_checkbox: bool  
+        space_radio: bool  
+        tab_radio: bool  
+        I0_checkbox: bool  
+        tth_radio: bool  
+        Q_radio: bool  
+        """
+        settings = {}
+        for attr in self.__dict__:
+            widget = getattr(self, attr)
+            if isinstance(widget, QLineEdit):
+                settings[attr] = widget.text()
+            elif isinstance(widget, QSpinBox):
+                settings[attr] = widget.value()
+            elif isinstance(widget, QCheckBox):
+                settings[attr] = widget.isChecked()
+            elif isinstance(widget, QRadioButton):
+                settings[attr] = widget.isChecked()
+        return settings
+    
+    def set_settings(self, settings):
+        """Set the settings from a dictionary."""
+        for key, value in settings.items():
+            if hasattr(self, key):
+                widget = getattr(self, key)
+                if isinstance(widget, QLineEdit):
+                    widget.setText(value)
+                elif isinstance(widget, QSpinBox):
+                    widget.setValue(value)
+                elif isinstance(widget, (QCheckBox, QRadioButton)):
+                    if isinstance(value, str):
+                        # If the value is a string, convert it to boolean
+                        value = value.lower() in ['true', '1', 'yes']
+                    widget.setChecked(value)
+        self._previous_settings = self.get_settings()
+            
+    def print_settings(self):
+        """Print the current settings."""
+        settings = self.get_settings()
+        for key, value in settings.items():
+            print(f"{key}: {value}")
+
+    def save_as_default(self):
+        """Emit a signal to save the current settings as default."""
+        settings = self.get_settings()
+        self.sigSaveAsDefault.emit(settings)
+        self.accept()
+
+    def restore_default(self):
+        """Restore the default settings."""
+        self.set_settings(self._default_settings)
+
+    def accept(self):
+        """Override the accept method to keep the changes."""
+        self._previous_settings = self.get_settings()
+        super().accept()
+
+    def reject(self):
+        """Override the reject method to discard the changes."""
+        self.set_settings(self._previous_settings)
+        super().reject()
+
+
+        
 
 if __name__ == "__main__":
     pass
+    # import sys
+    # app = QApplication(sys.argv)
+    # dialog = ExportSettingsDialog()
+
+    # settings = {
+    #     'extension_edit': 'xye',
+    #     'leading_zeros_spinbox': 8,
+    #     'header_checkbox': False,
+    #     'scientific_checkbox': True,
+    #     'space_radio': True,
+    #     'tab_radio': False,
+    #     'I0_checkbox': True,
+    #     'tth_radio': False,
+    #     'Q_radio': True
+    # }
+    # dialog.set_settings(settings)
+    # dialog.exec()
+    # dialog.print_settings()
+    #sys.exit(app.exec())

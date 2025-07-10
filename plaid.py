@@ -18,26 +18,44 @@ import pyqtgraph as pg
 import h5py as h5
 import resources.resources
 from trees import FileTreeWidget, CIFTreeWidget
-from dialogs import H5Dialog
+from dialogs import H5Dialog, ExportSettingsDialog
 from reference import Reference
 from plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
 from misc import q_to_tth, tth_to_q
 from data_containers import AzintData, AuxData
+from datetime import datetime
+
+
 
 
 # TODO/IDEAS
 
 # - Update patterns when a new file is loaded
-# - Add a button to save the average pattern
-# - Add a button to save the selected pattern(s)
 # - Expand the Help menu 
 
+# - Export patterns
+#     > Add an "Export average pattern" toolbar button
+#     > Add an "Export selected pattern(s)" toolbar button
+#     > Add an "Export all patterns" toolbar button
+#     > Perhaps an option to set the export file settings?
+#         * extension (line input limited to three characters)
+#         * delimiter (space/tab)
+#         * header (true/false),
+#         * scientific string formatting (true/false)
+#         * I0 normalized (true/false)
+#         * Q/2theta (radio buttons)
+#         * leading zeros (spinbox)
+
 # - Make a more robust file loading mechanism that can handle different file formats and 
-#   structures, perhaps as a "data class"
+#   structures, perhaps as a "select signal/axis" dialog for arbitrary .h5 files.
 
 # - replace print warnings/messages with QMessageBox dialogs
 
-# - handle auxiliary data drag drop 
+# - handle arbitrary .h5 file drag drop
+#     > if the dropped file is recognized as a azint file, load it and add it to the file tree
+#     > if not, prompt the user to load it as auxiliary data. Future versions could allow for custom azint readers?
+
+# - add an option to "group"  data files in the file tree. Perhaps "append file below" and "insert file above" actions to group files together?
 
 # - save additional settings like default path(s), dock widget positions, etc.
 
@@ -141,6 +159,10 @@ class MainWindow(QMainWindow):
 
         self.azint_data = AzintData()
         self.aux_data = {}
+
+        self.export_settings_dialog = ExportSettingsDialog(self)
+        self.export_settings_dialog.set_settings(self._load_export_settings())
+        self.export_settings_dialog.sigSaveAsDefault.connect(self._save_export_settings)
 
         # Create the main layout
         main_layout = QHBoxLayout()
@@ -312,6 +334,21 @@ class MainWindow(QMainWindow):
         view_menu.addAction(toggle_q_action)
         self.toggle_q_action = toggle_q_action
 
+        # create an export menu
+        export_menu = menu_bar.addMenu("&Export")
+        # Add an action to export the current pattern(s)
+        export_pattern_action = QAction("Export &Pattern(s)", self)
+        export_pattern_action.setToolTip("Export the current pattern(s) to double-column file(s)")
+        export_pattern_action.triggered.connect(self.export_pattern)
+        export_menu.addAction(export_pattern_action)
+        
+        # Add an action to open the export settings dialog
+        export_settings_action = QAction("&Settings", self)
+        export_settings_action.setToolTip("Open the export settings dialog")
+        export_settings_action.triggered.connect(self.export_settings_dialog.open)
+        export_menu.addAction(export_settings_action)
+
+
         # create a help menu
         help_menu = menu_bar.addMenu("&Help")
         # Add an action to show the help dialog
@@ -346,13 +383,14 @@ class MainWindow(QMainWindow):
         self.resizeDocks([file_tree_dock, cif_tree_dock, auxiliary_plot_dock], [200, 200, 200], QtCore.Qt.Orientation.Horizontal)
 
 
+
     def add_pattern(self, pos):
         """Add a horizontal line to the heatmap and an accompanying pattern."""
-        I = self.azint_data.get_I()
-        index = int(np.clip(pos[1], 0, I.shape[0]-1))
-        self.heatmap.addHLine(pos=index+0.5)
+        index = int(np.clip(pos[1], 0, self.azint_data.shape[0]-1))
+        y = self.azint_data.get_I(index=index)  # Get the intensity data for the current frame
+        self.heatmap.addHLine(pos=index)
         self.pattern.add_pattern()
-        self.pattern.set_data(y=I[index], index=len(self.pattern.pattern_items)-1)
+        self.pattern.set_data(y=y, index=len(self.pattern.pattern_items)-1)
         self.pattern.set_pattern_name(name=f"frame {index}", index=len(self.pattern.pattern_items)-1)
 
         # add a vertical line to the auxiliary plot
@@ -709,7 +747,68 @@ class MainWindow(QMainWindow):
                 _x, _y = ref_item.getData()
                 _x = q_to_tth(_x, self.E)
                 ref_item.setData(x=_x, y=_y)
+
+    def export_pattern(self):
+        """Export the current pattern(s) to a file."""
+        if not self.azint_data.fnames:
+            QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
+            return
+        # get a dictionary of the export settings
+        export_settings = self.export_settings_dialog.get_settings()
+        # extension
+        ext = export_settings['extension_edit']
+        # leading zeros
+        pad = export_settings['leading_zeros_spinbox']
+        # header
+        if export_settings['header_checkbox']:
+            header = ("plaid - plot azimuthally integrated data\n"
+                        f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                        f"exported from {self.azint_data.fnames[0]}\n")
+            if self.E is not None:
+                header += f"energy keV: {self.E:.4}\n"
+                header += f"wavelength A: {12.398 / self.E:.6f}\n" 
+            if export_settings['tth_radio']:
+                col_header = f'{"2theta":>7}_{"intensity":>10}'
+            else:
+                col_header = f'{"q":>7}_{"intensity":>10}'
+            if export_settings['space_radio']:
+                col_header = col_header.replace('_', ' ')
+            else:
+                col_header = col_header.replace('_', '\t')
+            header += col_header
+        else:
+            header = ''
+        # data format
+        if export_settings['scientific_checkbox']:
+            fmt = '%.6e'
+        else:
+            fmt = ['%7.4f', '%10.2f']
+        # delimiter
+        if export_settings['space_radio']:
+            delimiter = ' '
+        else:
+            delimiter = '\t'
         
+        # prepare kwargs for the export function, passed to np.savetxt
+        kwargs = {'header': header, 'fmt': fmt, 'delimiter': delimiter}
+        
+        # I0 normalization
+        I0_normalized = export_settings['I0_checkbox']
+
+        is_Q = export_settings['Q_radio']
+        
+        indices = self.heatmap.get_h_line_positions()
+        for index in indices:
+            ending = "_{index:0{pad}d}.{ext}".format(index=index, pad=pad, ext=ext)
+            fname = self.azint_data.fnames[0].replace('.h5', ending)
+            fname, ok = QFileDialog.getSaveFileName(self, "Save Pattern", fname, f"{ext.upper()} Files (*.{ext});;All Files (*)")
+            if ok:
+                if fname:
+                    self.azint_data.export_pattern(fname,index,is_Q, I0_normalized=I0_normalized,kwargs=kwargs)
+            else:
+                break  # Exit the loop if the user cancels the save dialog
+
+
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
@@ -745,7 +844,10 @@ class MainWindow(QMainWindow):
             # Toggle between q and 2theta
             self.toggle_q()
 
-
+        # DEBUG
+        elif event.key() == QtCore.Qt.Key.Key_Space:
+            pass
+        
            
     def _save_dock_settings(self):
         """Save the dock widget settings."""
@@ -776,6 +878,27 @@ class MainWindow(QMainWindow):
         settings.endGroup()
         settings.endGroup()  # End MainWindow group
         return left_docks, right_docks
+
+    def _save_export_settings(self,settings):
+        """Save the export settings."""
+        export_settings = QtCore.QSettings("plaid", "plaid")
+        export_settings.beginGroup("ExportSettings")
+        for key, value in settings.items():
+            export_settings.setValue(key, value)
+        export_settings.endGroup()
+
+
+    def _load_export_settings(self):
+        """Load the export settings."""
+        export_settings = QtCore.QSettings("plaid", "plaid")
+        export_settings.beginGroup("ExportSettings")
+        settings = {}
+        for key in export_settings.allKeys():
+            settings[key] = export_settings.value(key)
+        export_settings.endGroup()
+        return settings
+
+
 
     def show_help_dialog(self):
         """Show the help dialog."""

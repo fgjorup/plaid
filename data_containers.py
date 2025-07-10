@@ -100,20 +100,25 @@ class AzintData():
         q = tth_to_q(self.x, self.E)
         return q
         
-    def get_I(self, I0_normalized=True):
-        """Get the intensity data. By default, it returns the normalized intensity
-                data by dividing by I0 if I0 is set."""
+    def get_I(self, index=None, I0_normalized=True):
+        """
+        Get the intensity data at I[index] if index not None, otherwise return I.
+        By default, it returns the normalized intensity data by dividing by I0 if I0 is set.
+        """
         if self.I is None:
             print("No intensity data loaded.")
             return None
-        I = self.I.copy()  # Make a copy of the intensity data
+        I0 = 1
         if self.I0 is not None and I0_normalized:
             if self.I0.shape[0] != I.shape[0]:
                 print(f"I0 data shape {self.I0.shape} must match the number of frames {I.shape} in the azimuthal integration data.")
                 return None
-            # Normalize the intensity data by I0
-            I = I / self.I0[:, np.newaxis]
-        return I
+            I0 = self.I0
+        if index is not None:
+            I = self.I[index, :]  # Get the intensity data for the specified index
+        else:
+            I = self.I
+        return (I.T / I0).T  
 
     def set_I0(self, I0):
         """Set the I0 data."""
@@ -143,6 +148,28 @@ class AzintData():
         if self.I.shape[0]  != self.I0.shape[0]:
             print(f"I0 data shape {self.I0.shape} must match the number of frames {self.I.shape} in the azimuthal integration data.")
             return
+    
+    def export_pattern(self, fname, index, is_Q=False, I0_normalized=True, kwargs={}):
+        """
+        Export the azimuthal integration data at the current index to a text file.  
+        If I0_normalized is True, normalize the intensity data by I0.  
+        kwargs passed to np.savetxt  
+        """
+        if self.I is None:
+            print("No intensity data loaded.")
+            return False
+        if is_Q:
+            x = self.get_q()
+        else:
+            x = self.get_tth()
+        y = self.get_I(index=index, I0_normalized=I0_normalized)
+        
+        if x is None or y is None:
+            print("Error retrieving data for export.")
+            return False
+        
+        self._export_xy(fname,x,y, kwargs)
+        return True
 
     def _determine_load_func(self, fname):
         """Determine the appropriate load function based on the file structure."""
@@ -214,6 +241,14 @@ class AzintData():
             I = f['I'][:]
         return x, I, is_q, None
     
+
+    def _export_xy(self, fname, x, y, kwargs={}):
+        """
+        Export the azimuthal integration data to a text file.  
+        kwargs are passed to np.savetxt.
+        """      
+        np.savetxt(fname, np.column_stack((x, y)),comments='#',**kwargs)
+        return True
 
 class AuxData:
     def __init__(self,parent=None):

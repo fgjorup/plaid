@@ -203,6 +203,22 @@ class HeatmapWidget(QWidget):
         # reconnect the signal
         self.h_lines[index].sigPositionChanged.connect(self.h_line_moved)
 
+    def get_h_line_pos(self, index):
+        """Get the position of a horizontal line."""
+        if index < 0 or index >= len(self.h_lines) or self.n is None:
+            return None
+        # get the position of the horizontal line
+        pos = self.h_lines[index].y()
+        # return the position as an integer index
+        return int(np.clip(pos, 0, self.n-1))
+    
+    def get_h_line_positions(self):
+        """Get the positions of all horizontal lines."""
+        if self.n is None:
+            return []
+        # return the positions of all horizontal lines as a list of indices
+        return [self.get_h_line_pos(i) for i in range(len(self.h_lines))]
+
     def h_line_moved(self, line):
         """Handle the horizontal line movement."""
         if self.x is None or self.n is None:
