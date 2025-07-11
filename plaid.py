@@ -30,7 +30,6 @@ from datetime import datetime
 
 # TODO/IDEAS
 
-# - Update patterns when a new file is loaded
 # - Expand the Help menu 
 
 # - Export patterns
@@ -570,6 +569,7 @@ class MainWindow(QMainWindow):
         # Update the pattern with the first frame
         self.pattern.set_data(x, I[0])
         self.pattern.set_avg_data(y_avg)
+        self.update_all_patterns()
         self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
 
@@ -589,6 +589,11 @@ class MainWindow(QMainWindow):
         y = self.azint_data.get_I(index=pos)
         self.pattern.set_data(y=y, index=index)
         self.pattern.set_pattern_name(name=f"frame {pos}", index=index)
+
+    def update_all_patterns(self):
+        """Update all patterns with the current data."""
+        for i,pos in enumerate(self.heatmap.get_h_line_positions()):
+            self.update_pattern(i,pos)
 
     def open_cif_file(self):
         """Open a file dialog to select a cif file and add it to the cif tree."""
