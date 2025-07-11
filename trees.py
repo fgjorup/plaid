@@ -11,6 +11,7 @@ This module provides classes to create tree widgets for managing files and CIFs.
 import os
 from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 from PyQt6 import QtCore
+from PyQt6.QtGui import QFont
 import pyqtgraph as pg
 from reference import validate_cif
 
@@ -26,6 +27,7 @@ colors = [
 
 class FileTreeWidget(QWidget):
     sigItemDoubleClicked = QtCore.pyqtSignal(str,object)
+    sigGroupDoubleClicked = QtCore.pyqtSignal(list,list)
     sigItemRemoved = QtCore.pyqtSignal(str)
     sigI0DataRequested = QtCore.pyqtSignal()
     sigAuxiliaryDataRequested = QtCore.pyqtSignal()
@@ -33,6 +35,7 @@ class FileTreeWidget(QWidget):
         super().__init__(parent)
         self.files = []  # List to store file paths
         self.aux_target_index = None  # Index of the item for which auxiliary data is requested
+        self.item_group = []  # List to store selected items for grouping
         # Create a layout
         layout = QVBoxLayout(self)
         # Create a file tree view
@@ -43,7 +46,7 @@ class FileTreeWidget(QWidget):
         self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         self.file_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_tree.customContextMenuRequested.connect(self.customMenuEvent)
-
+        self.file_tree.setSelectionMode(QTreeWidget().SelectionMode.ExtendedSelection)
         layout.addWidget(self.file_tree)
 
         #self.setAcceptDrops(True)
@@ -134,16 +137,28 @@ class FileTreeWidget(QWidget):
         index = self.file_tree.indexOfTopLevelItem(item)
         if index == -1:
             return
-        self.sigItemDoubleClicked.emit(self.files[index],item)
+        # set the expanded state to avoid the default behavior of expanding/collapsing
+        # the item when double-clicked
+        item.setExpanded(not item.isExpanded())
+        # check if the item is in the group
+        if item in self.item_group:
+            indices = [self.file_tree.indexOfTopLevelItem(i) for i in self.item_group]
+            # emit a signal with the list of files in the group
+            self.sigGroupDoubleClicked.emit([self.files[i] for i in indices],self.item_group)
+        else:
+            self.sigItemDoubleClicked.emit(self.files[index],item)
 
     def remove_item(self, item):
         """Remove the item from the tree."""
         index = self.file_tree.indexOfTopLevelItem(item)
         if index == -1:
             return
+        # check if the item is in the group
+        if item in self.item_group:
+            # if the item is in the group, ungroup it
+            self.ungroup_selected_items()
         # remove the file from the list
         file = self.files.pop(index)
-
         # remove the item from the tree
         self.file_tree.takeTopLevelItem(index)
         # emit a signal if needed
@@ -176,6 +191,23 @@ class FileTreeWidget(QWidget):
         # Emit a signal to request auxiliary data for item
         self.sigAuxiliaryDataRequested.emit()
 
+    def group_selected_items(self):
+        """Group the selected items together."""
+        self.item_group = self.file_tree.selectedItems()
+        # set the font of the selected items to bold
+        for item in self.item_group:
+            item.setFont(0, QFont("Arial", weight=QFont.Weight.Bold))
+        # emit the sigGroupDoubleClicked signal with the list of files in the group
+        self.itemDoubleClicked(self.item_group[0], 0)  # Use the first item as the representative
+
+    def ungroup_selected_items(self):
+        """Ungroup the selected items."""
+        # set the font of the selected items to normal
+        for item in self.item_group:
+            item.setFont(0, QFont("Arial", weight=QFont.Weight.Normal))
+        # clear the item group
+        self.item_group = []
+
     def customMenuEvent(self, pos):
         """Handle the custom context menu event."""
         # determine the item at the position
@@ -185,16 +217,15 @@ class FileTreeWidget(QWidget):
         # check if the item is a top-level item
         if item.parent() is not None:
             return
-        # # create a context menu
-        # menu = QMenu(self)
-        # # add an action to remove the item
-        # remove_action = menu.addAction("Remove")
-        # remove_action.triggered.connect(lambda: self.remove_item(item))
-        # # add an action to add auxiliary data
-        # add_aux_action = menu.addAction("Add Auxiliary Data")
-        # add_aux_action.triggered.connect(lambda: self.request_auxiliary_data(item))
-        # create a context menu for the item
-        menu = self._mkMenu('toplevel',item)
+        
+        # check if several items are selected
+        selected_items = self.file_tree.selectedItems()
+        if len(selected_items) > 1:
+            # create a context menu for the group of items
+            menu = self._mkGroupMenu(selected_items)
+        else:
+            # create a context menu for the item
+            menu = self._mkMenu('toplevel',item)
         menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         menu.deleteLater()  # Clean up the menu after use
 
@@ -214,6 +245,11 @@ class FileTreeWidget(QWidget):
             remove_action = menu.addAction("Remove")
             remove_action.setToolTip("Remove the selected item from the tree")
             remove_action.triggered.connect(lambda: self.remove_item(item))
+            if item in self.item_group:
+                # if the item is in the group, add an action to ungroup it
+                ungroup_action = menu.addAction("Ungroup")
+                ungroup_action.setToolTip("Ungroup the selected items")
+                ungroup_action.triggered.connect(self.ungroup_selected_items)
         # elif level == 'child':
         #     menu = QMenu(self)
         #     # add an action to request normalization the data
@@ -224,6 +260,19 @@ class FileTreeWidget(QWidget):
         #     remove_action.triggered.connect(lambda: item.parent().removeChild(item))
         return menu
 
+    def _mkGroupMenu(self,selected_items):
+        """Create a context menu for a group of selected items."""
+        menu = QMenu(self)
+        # add an action to group the selected items
+        group_action = menu.addAction("Group")
+        group_action.setToolTip("Group the selected files together")
+        group_action.triggered.connect(self.group_selected_items)
+        # add an action to ungroup the selected items if any are grouped
+        if any(item in self.item_group for item in selected_items):
+            ungroup_action = menu.addAction("Ungroup")
+            ungroup_action.setToolTip("Ungroup the selected items")
+            ungroup_action.triggered.connect(self.ungroup_selected_items)
+        return menu
 
 class CIFTreeWidget(QWidget):
     sigItemAdded = QtCore.pyqtSignal(str)

@@ -56,7 +56,7 @@ from datetime import datetime
 #     > if not, prompt the user to load it as auxiliary data. Future versions could allow for custom azint readers?
 
 # - add an option to "group"  data files in the file tree. Perhaps "append file below" and "insert file above" actions to group files together?
-
+#     > Find a way to handle I0 data
 # - save additional settings like default path(s), dock widget positions, etc.
 
 # - optimize memory usage and performance for large datasets
@@ -232,6 +232,7 @@ class MainWindow(QMainWindow):
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
  
         self.file_tree.sigItemDoubleClicked.connect(self.load_file)
+        self.file_tree.sigGroupDoubleClicked.connect(self.load_file)
         self.file_tree.sigItemRemoved.connect(self.remove_file)
         self.file_tree.sigI0DataRequested.connect(self.load_I0_data)
         self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data)
@@ -498,15 +499,16 @@ class MainWindow(QMainWindow):
 
     def load_file(self, file_path, item=None):
         """Load the selected file and update the heatmap and pattern."""
-
-        self.azint_data = AzintData(self,[file_path])
+        if isinstance(file_path, str):
+            file_path = [file_path]  # Ensure file_path is a list
+        self.azint_data = AzintData(self,file_path)
         if not self.azint_data.load():
-            QMessageBox.critical(self, "Error", f"Failed to load file: {file_path}")
+            QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
             return
         
         # clear the auxiliary plot and check for I0 and auxiliary data
         self.auxiliary_plot.clear_plot()  # Clear the previous plot
-        if item is not None:
+        if item is not None and not isinstance(item, list): # for now, only handle a single item
             # check if the item has I0 data
             if item.toolTip(0) in self.aux_data:
                 I0 = self.aux_data[item.toolTip(0)].get_data('I0')
@@ -515,6 +517,39 @@ class MainWindow(QMainWindow):
                 if len(self.aux_data[item.toolTip(0)].keys()) > 1:
                     # if there are more keys, plot the auxiliary data
                     self.add_auxiliary_plot(item.toolTip(0))
+
+        elif isinstance(item, list):
+            # check if grouped auxiliary data already exists
+            group_path = ";".join([i.toolTip(0) for i in item])
+            if group_path in self.aux_data:
+                aux_data = self.aux_data[group_path]
+            # if no grouped auxiliary data exists, but any of the items
+            # have auxiliary data, append the data to the aux_data dict
+            elif any(i.toolTip(0) in self.aux_data for i in item):
+                self.aux_data[group_path] = AuxData()
+                aliases = [self.aux_data[i.toolTip(0)].keys() for i in item if i.toolTip(0) in self.aux_data]
+                aliases = set().union(*aliases)  # Flatten the list of lists and remove duplicates
+                aliases = list(aliases)  # Convert back to a list
+                for alias in aliases:
+                    data = np.array([])
+                    for i in item:
+                        if i.toolTip(0) in self.aux_data and alias in self.aux_data[i.toolTip(0)].keys():
+                            data = np.append(data, self.aux_data[i.toolTip(0)].get_data(alias))
+                        else:
+                            data = np.append(data, np.full((self.azint_data.shape[0],), np.nan))
+                    self.aux_data[group_path].add_data(alias, data)
+                # disable I0 data (for now)
+                self.aux_data[group_path].I0 = None
+                aux_data = self.aux_data[group_path]
+            else:
+                aux_data = None
+            if aux_data is not None:
+                I0 = aux_data.get_data('I0')
+                if I0 is not None:
+                    self.azint_data.set_I0(I0)
+                if len(aux_data.keys()) > 1:
+                    # if there are more keys, plot the auxiliary data
+                    self.add_auxiliary_plot(group_path)
         
         x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
         I = self.azint_data.get_I()
@@ -524,16 +559,7 @@ class MainWindow(QMainWindow):
         self.toggle_q_action.setChecked(is_q)
         if self.azint_data.E is not None:
             self.E = self.azint_data.E
-        
-            # # check if the item has I0 data
-            # if item.text(0) in self.aux_data:
-            #     I0 = self.aux_data[item.text(0)].get_data('I0')
-            #     if I0 is not None:
-            #         self.azint_data.set_I0(I0)
-            #     if len(self.aux_data[item.text(0)].keys()) > 1:
-            #         # if there are more keys, plot the auxiliary data
-            #         self.add_auxiliary_plot(item.text(0))
-
+    
 
         # Update the heatmap with the new data
         self.heatmap.set_data(x, I.T)
@@ -554,6 +580,7 @@ class MainWindow(QMainWindow):
 
     def vline_moved(self, index, pos):
         """Handle the vertical line movement in the auxiliary plot."""
+        pos = int(np.clip(pos, 0, self.azint_data.shape[0]-1))
         self.update_pattern(index, pos)
         self.heatmap.set_h_line_pos(index, pos)
 
@@ -923,7 +950,8 @@ class MainWindow(QMainWindow):
 
         # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
-            pass
+            print(self.file_tree.files)
+            self.load_file(self.file_tree.files)
         
            
     def _save_dock_settings(self):
