@@ -110,15 +110,25 @@ class AzintData():
             return None
         I0 = 1
         if self.I0 is not None and I0_normalized:
-            if self.I0.shape[0] != I.shape[0]:
+            if self.I0.shape[0] != self.shape[0]:
                 print(f"I0 data shape {self.I0.shape} must match the number of frames {I.shape} in the azimuthal integration data.")
                 return None
             I0 = self.I0
         if index is not None:
             I = self.I[index, :]  # Get the intensity data for the specified index
+            I0 = I0[index] if isinstance(I0, np.ndarray) else I0  # Get the corresponding I0 value
         else:
             I = self.I
-        return (I.T / I0).T  
+        return (I.T / I0).T
+    
+    def get_average_I(self, I0_normalized=True):
+        """Get the average intensity data, normalized by I0 if set."""
+        if self.I is None:
+            print("No intensity data loaded.")
+            return None
+        I = self.get_I(index=None, I0_normalized=I0_normalized)
+        return np.mean(I, axis=0) if I is not None else None
+
 
     def set_I0(self, I0):
         """Set the I0 data."""
@@ -163,6 +173,28 @@ class AzintData():
         else:
             x = self.get_tth()
         y = self.get_I(index=index, I0_normalized=I0_normalized)
+        
+        if x is None or y is None:
+            print("Error retrieving data for export.")
+            return False
+        
+        self._export_xy(fname,x,y, kwargs)
+        return True
+    
+    def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, kwargs={}):
+        """
+        Export the average azimuthal integration data to a text file.  
+        If I0_normalized is True, normalize the intensity data by I0.  
+        kwargs passed to np.savetxt  
+        """
+        if self.I is None:
+            print("No intensity data loaded.")
+            return False
+        if is_Q:
+            x = self.get_q()
+        else:
+            x = self.get_tth()
+        y = self.get_average_I(I0_normalized=I0_normalized)
         
         if x is None or y is None:
             print("Error retrieving data for export.")

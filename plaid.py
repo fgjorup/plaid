@@ -11,7 +11,7 @@ including loading files, displaying heatmaps and patterns, and managing auxiliar
 import sys
 import os
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget, QSizePolicy, QFileDialog, QMessageBox
+from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget, QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QDialog
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
@@ -155,7 +155,7 @@ class MainWindow(QMainWindow):
     
         self.E = None  # Energy in keV
         self.is_Q = False
-        self.y_avg = None
+        # self.y_avg = None
 
         self.azint_data = AzintData()
         self.aux_data = {}
@@ -336,11 +336,25 @@ class MainWindow(QMainWindow):
 
         # create an export menu
         export_menu = menu_bar.addMenu("&Export")
+        # Add an action to export the average pattern
+        export_average_action = QAction("Export &Average Pattern", self)
+        export_average_action.setToolTip("Export the average pattern to a double-column file")
+        export_average_action.triggered.connect(self.export_average_pattern)
+        export_menu.addAction(export_average_action)
+        
         # Add an action to export the current pattern(s)
         export_pattern_action = QAction("Export &Pattern(s)", self)
         export_pattern_action.setToolTip("Export the current pattern(s) to double-column file(s)")
         export_pattern_action.triggered.connect(self.export_pattern)
         export_menu.addAction(export_pattern_action)
+
+        # add an action to export all patterns
+        export_all_action = QAction("Export &All Patterns", self)
+        export_all_action.setToolTip("Export all patterns to double-column files")
+        export_all_action.triggered.connect(self.export_all_patterns)
+        export_menu.addAction(export_all_action) 
+
+        export_menu.addSeparator()
         
         # Add an action to open the export settings dialog
         export_settings_action = QAction("&Settings", self)
@@ -430,7 +444,8 @@ class MainWindow(QMainWindow):
             x_value = self.azint_data.get_q()[x_idx]
         else:
             x_value = self.azint_data.get_tth()[x_idx]
-        y_value = self.azint_data.I[y_idx, x_idx] if self.azint_data.I is not None else 0
+        #y_value = self.azint_data.I[y_idx, x_idx] if self.azint_data.I is not None else 0
+        y_value = self.azint_data.get_I(index=y_idx)[x_idx] if self.azint_data.I is not None else 0
         self.update_status_bar(x_value, y_value)
 
 
@@ -488,14 +503,6 @@ class MainWindow(QMainWindow):
         if not self.azint_data.load():
             QMessageBox.critical(self, "Error", f"Failed to load file: {file_path}")
             return
-        x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
-        I = self.azint_data.get_I()
-        y_avg = self.azint_data.y_avg
-        is_q = self.azint_data.is_q
-        self.is_Q = is_q
-        self.toggle_q_action.setChecked(is_q)
-        if self.azint_data.E is not None:
-            self.E = self.azint_data.E
         
         # clear the auxiliary plot and check for I0 and auxiliary data
         self.auxiliary_plot.clear_plot()  # Clear the previous plot
@@ -508,6 +515,16 @@ class MainWindow(QMainWindow):
                 if len(self.aux_data[item.toolTip(0)].keys()) > 1:
                     # if there are more keys, plot the auxiliary data
                     self.add_auxiliary_plot(item.toolTip(0))
+        
+        x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
+        I = self.azint_data.get_I()
+        y_avg = self.azint_data.get_average_I()
+        is_q = self.azint_data.is_q
+        self.is_Q = is_q
+        self.toggle_q_action.setChecked(is_q)
+        if self.azint_data.E is not None:
+            self.E = self.azint_data.E
+        
             # # check if the item has I0 data
             # if item.text(0) in self.aux_data:
             #     I0 = self.aux_data[item.text(0)].get_data('I0')
@@ -542,8 +559,8 @@ class MainWindow(QMainWindow):
 
     def update_pattern(self, index, pos):
         # Get the selected frame from the heatmap
-        I = self.azint_data.get_I()
-        self.pattern.set_data(y=I[pos], index=index)
+        y = self.azint_data.get_I(index=pos)
+        self.pattern.set_data(y=y, index=index)
         self.pattern.set_pattern_name(name=f"frame {pos}", index=index)
 
     def open_cif_file(self):
@@ -649,7 +666,17 @@ class MainWindow(QMainWindow):
         elif target_shape[0] != I0.shape[0]:
             QMessageBox.critical(self, "Shape Mismatch", f"The I0 shape {I0.shape} does not match the data shape {target_shape}.")
             return
+        # add the I0 data to the auxiliary data
+        # to ensure that it is available if the 
+        # azint data is cleared
         self.aux_data[target_name].set_I0(I0)
+
+        # if the I0 was added to the current azint data,
+        # update the azint data instance
+        if target_name in self.azint_data.fnames:
+            # if the target name is already in the azint data, update it
+            self.load_file(self.azint_data.fnames[0],self.file_tree.get_aux_target_item())
+
 
 
     def add_auxiliary_data(self,is_ok):
@@ -670,18 +697,7 @@ class MainWindow(QMainWindow):
         # Update the auxiliary plot with the new data
         self.add_auxiliary_plot(target_name)
 
-    # MARKED FOR DEPRECATION
-    def _add_auxiliary_plot(self):
-        """Add an auxiliary plot"""
-        if not self.azint_data.aux_data:
-            print("No auxiliary data available.")
-            return
-        self.auxiliary_plot.clear_plot()  # Clear the previous plot
-        for alias, data in self.azint_data.aux_data.items():
-            if data.ndim == 1:
-                # If the data is 1D, plot it directly
-                self.auxiliary_plot.set_data(data, label=alias)
-    
+
     def add_auxiliary_plot(self, selected_item):
         """Add an auxiliary plot"""
         if not selected_item in self.aux_data:
@@ -696,8 +712,6 @@ class MainWindow(QMainWindow):
                 # If the data is 1D, plot it directly
                 self.auxiliary_plot.set_data(data, label=alias)
             
-
-
 
     def getQmax(self):
         """Get the maximum Q value of the current pattern"""
@@ -724,7 +738,7 @@ class MainWindow(QMainWindow):
             x = self.azint_data.get_q()
             self.heatmap.set_data(x, self.azint_data.get_I().T)
             self.pattern.x = x
-            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
+            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.get_average_I())
             for pattern_item in self.pattern.pattern_items:
                 _x, y = pattern_item.getData()
                 pattern_item.setData(x=x, y=y)
@@ -739,7 +753,7 @@ class MainWindow(QMainWindow):
             x = self.azint_data.get_tth()
             self.heatmap.set_data(x, self.azint_data.get_I().T)
             self.pattern.x = x
-            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.y_avg)
+            self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.get_average_I())
             for pattern_item in self.pattern.pattern_items:
                 _x, y = pattern_item.getData()
                 pattern_item.setData(x=x, y=y)
@@ -748,11 +762,7 @@ class MainWindow(QMainWindow):
                 _x = q_to_tth(_x, self.E)
                 ref_item.setData(x=_x, y=_y)
 
-    def export_pattern(self):
-        """Export the current pattern(s) to a file."""
-        if not self.azint_data.fnames:
-            QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
-            return
+    def _prepare_export_settings(self):
         # get a dictionary of the export settings
         export_settings = self.export_settings_dialog.get_settings()
         # extension
@@ -796,7 +806,15 @@ class MainWindow(QMainWindow):
         I0_normalized = export_settings['I0_checkbox']
 
         is_Q = export_settings['Q_radio']
-        
+        return ext, pad, is_Q, I0_normalized, kwargs
+
+    def export_pattern(self):
+        """Export the current pattern(s) to a file."""
+        if not self.azint_data.fnames:
+            QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
+            return
+        ext, pad, is_Q, I0_normalized, kwargs = self._prepare_export_settings()
+
         indices = self.heatmap.get_h_line_positions()
         for index in indices:
             ending = "_{index:0{pad}d}.{ext}".format(index=index, pad=pad, ext=ext)
@@ -804,9 +822,68 @@ class MainWindow(QMainWindow):
             fname, ok = QFileDialog.getSaveFileName(self, "Save Pattern", fname, f"{ext.upper()} Files (*.{ext});;All Files (*)")
             if ok:
                 if fname:
-                    self.azint_data.export_pattern(fname,index,is_Q, I0_normalized=I0_normalized,kwargs=kwargs)
+                    successful = self.azint_data.export_pattern(fname,index,is_Q, I0_normalized=I0_normalized,kwargs=kwargs)
+                    if not successful:
+                        QMessageBox.critical(self, "Error", f"Failed to export pattern to {fname}.")
             else:
                 break  # Exit the loop if the user cancels the save dialog
+
+    def export_average_pattern(self):
+        """Export the average pattern to a file."""
+        if not self.azint_data.fnames:
+            QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
+            return
+        ext, pad, is_Q, I0_normalized, kwargs = self._prepare_export_settings()
+
+        fname = self.azint_data.fnames[0].replace('.h5', f"_avg.{ext}")
+        fname, ok = QFileDialog.getSaveFileName(self, "Save Average Pattern", fname, f"{ext.upper()} Files (*.{ext});;All Files (*)")
+        if ok:
+            if fname:
+                successful = self.azint_data.export_average_pattern(fname,is_Q, I0_normalized=I0_normalized,kwargs=kwargs)
+                if not successful:
+                    QMessageBox.critical(self, "Error", f"Failed to export average pattern to {fname}.")
+
+    def export_all_patterns(self):
+        """Export all patterns to double-column files."""
+        if not self.azint_data.fnames:
+            QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
+            return
+        ext, pad, is_Q, I0_normalized, kwargs = self._prepare_export_settings()
+        # prompt for a directory to save the files
+        dst = os.path.dirname(self.azint_data.fnames[0]) if self.azint_data.fnames else os.path.expanduser("~")
+        directory = QFileDialog.getExistingDirectory(self, "Select Directory to Save Patterns", dst)
+        if not directory:
+            return  # User cancelled the dialog
+        # give the user a chance to cancel the export
+        msg = (f"You are about to export {self.azint_data.shape[0]} patterns to:\n"
+               f"{directory}\n"
+               "Do you want to continue?")
+        reply = QMessageBox.question(self, "Export Patterns",msg)
+        if reply != QMessageBox.StandardButton.Yes:
+            return  # User cancelled the export
+        
+        # define the root file path
+        root_file_path = os.path.join(os.path.abspath(directory), os.path.basename(self.azint_data.fnames[0]).replace('.h5', ''))
+        progress_dialog = QProgressDialog("Exporting patterns...", "Cancel", 0, self.azint_data.shape[0], self)
+        progress_dialog.setWindowModality(QtCore.Qt.WindowModality.WindowModal)
+        for index in range(self.azint_data.shape[0]):
+            if progress_dialog.wasCanceled():
+                QMessageBox.information(self, "Cancelled", f"Export cancelled after {index} patterns.")
+                return
+            ending = "_{index:0{pad}d}.{ext}".format(index=index, pad=pad, ext=ext)
+            fname = f"{root_file_path}{ending}"
+            # Update the progress dialog
+            progress_dialog.setValue(index)
+            progress_dialog.setLabelText(f"{fname}")
+            # Export the pattern
+            successful = self.azint_data.export_pattern(fname, index, is_Q, I0_normalized=I0_normalized, kwargs=kwargs)
+            if not successful:
+                QMessageBox.critical(self, "Error", f"Failed to export pattern to {fname}.")
+                progress_dialog.cancel()  # Cancel the progress dialog
+                return
+        progress_dialog.setValue(self.azint_data.shape[0])  # Set to maximum value to close the dialog
+        # inform the user that the export is done
+        QMessageBox.information(self, "Complete", f"Complete!\nExported {self.azint_data.shape[0]} patterns to:\n{directory}")
 
 
     def dragEnterEvent(self, event):

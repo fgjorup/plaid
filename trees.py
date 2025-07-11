@@ -105,7 +105,15 @@ class FileTreeWidget(QWidget):
         target_shape = tuple(int(dim) for dim in target_shape if dim.isdigit())
         return target_name,target_shape  # Return the file name of the target item
 
-        
+    def get_aux_target_item(self):
+        """Get the target item for auxiliary data."""
+        if self.aux_target_index is None or self.aux_target_index >= len(self.files):
+            return None
+        # get the target item
+        item = self.file_tree.topLevelItem(self.aux_target_index)
+        if item is None:
+            return None
+        return item
 
     def dragEnterEvent(self, event):
         """Handle drag enter event."""
