@@ -475,7 +475,7 @@ class MainWindow(QMainWindow):
         Open a file dialog to select an azimuthal integration file
         and add it to the file tree.
         """
-        if file_path is None:
+        if not file_path:
             # prompt the user to select a file
             if self.file_tree.files and self.file_tree.files[-1] is not None:
                 default_dir = os.path.dirname(self.file_tree.files[-1])
@@ -976,10 +976,10 @@ class MainWindow(QMainWindow):
             delta = self.heatmap.n// 20  # 5% of the total number of lines
             self.heatmap.move_active_h_line(-delta)
 
-        # DEBUG
-        elif event.key() == QtCore.Qt.Key.Key_Space:
-            print(self.file_tree.files)
-            self.load_file(self.file_tree.files)
+        # # DEBUG
+        # elif event.key() == QtCore.Qt.Key.Key_Space:
+        #     print(self.file_tree.files)
+        #     self.load_file(self.file_tree.files)
         
            
     def _save_dock_settings(self):
