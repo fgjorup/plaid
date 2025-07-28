@@ -111,7 +111,7 @@ class AzintData():
         I0 = 1
         if self.I0 is not None and I0_normalized:
             if self.I0.shape[0] != self.shape[0]:
-                print(f"I0 data shape {self.I0.shape} must match the number of frames {I.shape} in the azimuthal integration data.")
+                print(f"I0 data shape {self.I0.shape} must match the number of frames {self.shape} in the azimuthal integration data.")
                 return None
             I0 = self.I0
         if index is not None:
