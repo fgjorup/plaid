@@ -353,13 +353,18 @@ class ExportSettingsDialog(QDialog):
 
         # Add radio buttons for Q/2theta selection
         self.tth_Q_radio_group = QButtonGroup()
+        self.native_radio = QRadioButton("Native")
+        self.native_radio.setToolTip("Export data in the format native to the original file (2θ or Q)")
+        self.native_radio.setChecked(True) # Default to native format
         self.tth_radio = QRadioButton("2θ")
-        self.tth_radio.setChecked(True)  # Default to 2theta
+        # self.tth_radio.setChecked(True)  # Default to 2theta
         self.tth_radio.setToolTip("Export data in 2θ")
         self.Q_radio = QRadioButton("Q")
         self.Q_radio.setToolTip("Export data in Q")
+        self.tth_Q_radio_group.addButton(self.native_radio)
         self.tth_Q_radio_group.addButton(self.tth_radio)
         self.tth_Q_radio_group.addButton(self.Q_radio)
+        group_layout.addWidget(self.native_radio)
         group_layout.addWidget(self.tth_radio)
         group_layout.addWidget(self.Q_radio)
 
@@ -374,6 +379,7 @@ class ExportSettingsDialog(QDialog):
         space_radio: bool  
         tab_radio: bool  
         I0_checkbox: bool  
+        native_radio: bool  
         tth_radio: bool  
         Q_radio: bool  
         """

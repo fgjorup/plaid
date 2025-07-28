@@ -36,14 +36,7 @@ from datetime import datetime
 #     > Add an "Export average pattern" toolbar button
 #     > Add an "Export selected pattern(s)" toolbar button
 #     > Add an "Export all patterns" toolbar button
-#     > Perhaps an option to set the export file settings?
-#         * extension (line input limited to three characters)
-#         * delimiter (space/tab)
-#         * header (true/false),
-#         * scientific string formatting (true/false)
-#         * I0 normalized (true/false)
-#         * Q/2theta (radio buttons)
-#         * leading zeros (spinbox)
+
 
 # - Make a more robust file loading mechanism that can handle different file formats and 
 #   structures, perhaps as a "select signal/axis" dialog for arbitrary .h5 files.
@@ -357,7 +350,7 @@ class MainWindow(QMainWindow):
         export_menu.addSeparator()
         
         # Add an action to open the export settings dialog
-        export_settings_action = QAction("&Settings", self)
+        export_settings_action = QAction("Export &settings", self)
         export_settings_action.setToolTip("Open the export settings dialog")
         export_settings_action.triggered.connect(self.export_settings_dialog.open)
         export_menu.addAction(export_settings_action)
@@ -801,6 +794,18 @@ class MainWindow(QMainWindow):
         ext = export_settings['extension_edit']
         # leading zeros
         pad = export_settings['leading_zeros_spinbox']
+        
+        # determine if the export is in Q or 2theta
+        if export_settings['native_radio']:
+            # native export, use the azint_data.is_q attribute
+            is_Q = self.azint_data.is_q
+        elif export_settings['tth_radio']:
+            # export in 2theta
+            is_Q = False
+        else:
+            # export in Q
+            is_Q = True
+        
         # header
         if export_settings['header_checkbox']:
             header = ("plaid - plot azimuthally integrated data\n"
@@ -809,10 +814,11 @@ class MainWindow(QMainWindow):
             if self.E is not None:
                 header += f"energy keV: {self.E:.4}\n"
                 header += f"wavelength A: {12.398 / self.E:.6f}\n" 
-            if export_settings['tth_radio']:
-                col_header = f'{"2theta":>7}_{"intensity":>10}'
+            # if export_settings['tth_radio']:
+            if is_Q:
+                col_header = f'{"q":^7}_{"intensity":>10}'
             else:
-                col_header = f'{"q":>7}_{"intensity":>10}'
+                col_header = f'{"2theta":>7}_{"intensity":>10}'
             if export_settings['space_radio']:
                 col_header = col_header.replace('_', ' ')
             else:
@@ -837,7 +843,7 @@ class MainWindow(QMainWindow):
         # I0 normalization
         I0_normalized = export_settings['I0_checkbox']
 
-        is_Q = export_settings['Q_radio']
+
         return ext, pad, is_Q, I0_normalized, kwargs
 
     def export_pattern(self):
@@ -1068,7 +1074,7 @@ class MainWindow(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
-
+    # app.setStyle("Fusion")
     # get the application palette colors
     foreground_color = app.palette().text().color().darker(150).name()
     background_color = app.palette().window().color().darker(110).name()
