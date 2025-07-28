@@ -39,6 +39,7 @@ class HeatmapWidget(QWidget):
         self.x = None
         self.n = None
         self.h_lines = []
+        self.active_line = None
         self.use_log_scale = False  # Flag to use logarithmic scale for the heatmap
         # Create a layout
         layout = QHBoxLayout(self)
@@ -101,6 +102,7 @@ class HeatmapWidget(QWidget):
         h_line.setBounds([-1, self.n])
         # emit the signal for the new horizontal line
         #self.sigHLineAdded.emit(len(self.h_lines) - 1)
+        self.active_line = h_line
 
     def removeHLine(self, index=-1):
         """Remove a horizontal line from the plot."""
@@ -108,6 +110,7 @@ class HeatmapWidget(QWidget):
         self.plot_widget.removeItem(h_line)
         # emit the signal for the removed horizontal line
         self.sigHLineRemoved.emit(index)
+        self.active_line = self.h_lines[-1] if self.h_lines else None  # Set the active line to the last one if available
 
     def set_data(self, x,z,y=None):
         """Set the data for the heatmap."""
@@ -219,6 +222,22 @@ class HeatmapWidget(QWidget):
         # return the positions of all horizontal lines as a list of indices
         return [self.get_h_line_pos(i) for i in range(len(self.h_lines))]
 
+    def move_active_h_line(self, delta):
+        """Move the active horizontal line by a delta value."""
+        if not self.h_lines:
+            return
+        # get the index of the currently active horizontal line
+        current_index = self.h_lines.index(self.active_line) if self.active_line in self.h_lines else 0
+        pos = self.get_h_line_pos(current_index)
+        if pos is None:
+            return
+        # move the horizontal line by the delta value
+        new_pos = pos + delta
+        new_pos = int(np.clip(new_pos, 0, self.n-1))
+        self.set_h_line_pos(current_index, new_pos)
+        # emit the signal with the new position
+        self.sigHLineMoved.emit(current_index, new_pos)
+
     def h_line_moved(self, line):
         """Handle the horizontal line movement."""
         if self.x is None or self.n is None:
@@ -230,6 +249,7 @@ class HeatmapWidget(QWidget):
         index = self.h_lines.index(line)
         # emit the signal with the position
         self.sigHLineMoved.emit(index, pos)
+        self.active_line = self.h_lines[index]  # Set the active line to the one being moved
 
     def h_line_clicked(self, line, event):
         """Handle the horizontal line click event."""
@@ -237,6 +257,9 @@ class HeatmapWidget(QWidget):
             event.accept()  # Accept the event to prevent further processing
             index = self.h_lines.index(line)
             self.removeHLine(index)
+        elif event.button() == QtCore.Qt.MouseButton.LeftButton:
+            # set the active line to the clicked line
+            self.active_line = line
 
     def hover_event(self, event):
         """Handle the hover event on the image item."""

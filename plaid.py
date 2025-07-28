@@ -55,6 +55,7 @@ from datetime import datetime
 
 # - add more tooltips
 
+ALLOW_EXPORT_ALL_PATTERNS = True
 
 colors = [
         '#AAAA00',  # Yellow
@@ -345,6 +346,7 @@ class MainWindow(QMainWindow):
         export_all_action = QAction("Export &All Patterns", self)
         export_all_action.setToolTip("Export all patterns to double-column files")
         export_all_action.triggered.connect(self.export_all_patterns)
+        export_all_action.setEnabled(ALLOW_EXPORT_ALL_PATTERNS)  # Enable only if allowed
         export_menu.addAction(export_all_action) 
 
         export_menu.addSeparator()
@@ -959,6 +961,21 @@ class MainWindow(QMainWindow):
             # Toggle between q and 2theta
             self.toggle_q()
 
+        elif event.key() == QtCore.Qt.Key.Key_Up:
+            # Move the selected line one increment up
+            self.heatmap.move_active_h_line(1)
+        elif event.key() == QtCore.Qt.Key.Key_Down:
+            # Move the selected line one increment down
+            self.heatmap.move_active_h_line(-1)
+        elif event.key() == QtCore.Qt.Key.Key_Right:
+            # Move the selected line 5% up
+            delta = self.heatmap.n// 20  # 5% of the total number of lines
+            self.heatmap.move_active_h_line(delta)
+        elif event.key() == QtCore.Qt.Key.Key_Left:
+            # Move the selected line 5% down
+            delta = self.heatmap.n// 20  # 5% of the total number of lines
+            self.heatmap.move_active_h_line(-delta)
+
         # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
             print(self.file_tree.files)
@@ -1027,8 +1044,9 @@ class MainWindow(QMainWindow):
             "<li>Add a new HDF5 file by drag/drop or from 'File' -> 'Open'.</li>"
             "<li>Double-click on a file in the file tree to load it.</li>"
             "<li>Right-click on a file in the file tree to add I0 or auxiliary data.</li>"
+            "<li>Right-click on two or more selected files to group them.</li>"
             "<li>Double-click on the heatmap to add a moveable selection line.</li>"
-            "<li>Right-click on the moveale line to remove it.</li>"
+            "<li>Right-click on the moveable line to remove it.</li>"
             "<li>Use the file tree to manage your files and auxiliary data.</li>"
             "<li>Use the CIF tree to add reference patterns from CIF files.</li>"
             "<li>Click on a reference line to show its reflection index in the pattern.</li>"
