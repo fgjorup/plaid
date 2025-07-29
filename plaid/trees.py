@@ -43,6 +43,8 @@ class FileTreeWidget(QWidget):
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(['File name', 'Shape'])
         self.file_tree.setSortingEnabled(False)
+        self.file_tree.setColumnWidth(0, 150)
+        self.file_tree.setColumnWidth(1, 75)
         self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         self.file_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_tree.customContextMenuRequested.connect(self.customMenuEvent)

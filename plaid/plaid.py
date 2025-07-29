@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-plaid - Plot Azimuthally Integrated Data
+plaid - plot azimuthally integrated ata
 F.H. Gjørup 2025
 Aarhus University, Denmark
 MAX IV Laboratory, Lund University, Sweden
@@ -17,6 +17,14 @@ from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
 from datetime import datetime
+import argparse
+
+script_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(script_dir)
+if script_dir not in sys.path:
+    sys.path.insert(0, script_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
 from plaid.trees import FileTreeWidget, CIFTreeWidget
 from plaid.dialogs import H5Dialog, ExportSettingsDialog
 from plaid.reference import Reference
@@ -107,6 +115,12 @@ def read_recent_files_settings():
     settings.endGroup()
     return recent_files
 
+def clear_recent_files_settings():
+    """Clear the recent files settings."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    settings.setValue("recent-files", [])
+    settings.endGroup()
 
 def save_recent_refs_settings(recent_refs):
     """
@@ -135,6 +149,13 @@ def read_recent_refs_settings():
     recent_refs = settings.value("recent-references", [], type=list)
     settings.endGroup()
     return recent_refs
+
+def clear_recent_refs_settings():
+    """Clear the recent references settings."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.beginGroup("MainWindow")
+    settings.setValue("recent-references", [])
+    settings.endGroup()
 
 
 class MainWindow(QMainWindow):
@@ -287,7 +308,7 @@ class MainWindow(QMainWindow):
 
         # add a menu to load recent references
         recent_refs = read_recent_refs_settings()
-        recent_references_menu = file_menu.addMenu("Load Re&cent")
+        recent_references_menu = file_menu.addMenu("&Load Recent")
         if recent_refs:
             recent_references_menu.setEnabled(True)
             recent_references_menu.setToolTip("Load a recent reference")
@@ -331,7 +352,7 @@ class MainWindow(QMainWindow):
         # create an export menu
         export_menu = menu_bar.addMenu("&Export")
         # Add an action to export the average pattern
-        export_average_action = QAction("Export &Average Pattern", self)
+        export_average_action = QAction("&Export Average Pattern", self)
         export_average_action.setToolTip("Export the average pattern to a double-column file")
         export_average_action.triggered.connect(self.export_average_pattern)
         export_menu.addAction(export_average_action)
@@ -389,7 +410,7 @@ class MainWindow(QMainWindow):
         #h5dialog.finished.connect(lambda result: print(h5dialog.selected_items) if result == QDialog.DialogCode.Accepted else print("H5Dialog cancelled"))
 
 
-        self.resizeDocks([file_tree_dock, cif_tree_dock, auxiliary_plot_dock], [200, 200, 200], QtCore.Qt.Orientation.Horizontal)
+        self.resizeDocks([file_tree_dock, cif_tree_dock, auxiliary_plot_dock], [250, 250, 250], QtCore.Qt.Orientation.Horizontal)
 
 
 
@@ -1090,7 +1111,22 @@ class MainWindow(QMainWindow):
         self._save_dock_settings()
         event.accept()
 
-def main():
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description="Plot azimuthally integrated data from HDF5 files.")
+    # Add an argument for opening a file on startup
+    parser.add_argument("-f", "--file", nargs='*', help="File(s) to open on startup. Can be multiple files.")
+    # Add an argument for limiting the export options
+    parser.add_argument("-l", "--limit-export", action="store_true", help="Limit the export options to individual patterns.")
+    # add an argument for the clearing the recent files
+    parser.add_argument("-c", "--clear-recent-files", action="store_true", help="Clear the recent files list on startup.")
+    # add an argument for the clearing the recent references
+    parser.add_argument("-r", "--clear-recent-refs", action="store_true", help="Clear the recent references list on startup.")
+
+    return parser.parse_args()
+
+
+def main(files=None):
     app = QApplication(sys.argv)
     # app.setStyle("Fusion")
     # get the application palette colors
@@ -1102,10 +1138,29 @@ def main():
                         background=background_color,
                         )
     window = MainWindow()
+    if isinstance(files, list):
+        for file in files:
+            window.open_file(file)
     window.show()
-
     sys.exit(app.exec())
 
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    
+    if args.limit_export:
+        ALLOW_EXPORT_ALL_PATTERNS = False
+    if args.clear_recent_files:
+        # clear the recent files list on startup
+        clear_recent_files_settings()
+    if args.clear_recent_refs:
+        # clear the recent references list on startup
+        clear_recent_refs_settings()
+    # if files are provided, open them on startup
+    if args.file:
+        files = [f for f in args.file if os.path.isfile(f)]
+    else:
+        files = None
+        
+
+    main(files)

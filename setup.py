@@ -1,6 +1,5 @@
 from setuptools import setup, find_packages
 from plaid import __version__ as plaid_version
-import os
 
 def readme():
     """Read the contents of the README file."""

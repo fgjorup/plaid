@@ -108,3 +108,6 @@ resources/
 
 # virtual environment
 .venv*/
+
+# windows shortcuts
+*.lnk
