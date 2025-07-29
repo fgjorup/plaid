@@ -16,14 +16,14 @@ from PyQt6.QtGui import QAction, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
-import resources.resources
-from trees import FileTreeWidget, CIFTreeWidget
-from dialogs import H5Dialog, ExportSettingsDialog
-from reference import Reference
-from plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
-from misc import q_to_tth, tth_to_q
-from data_containers import AzintData, AuxData
 from datetime import datetime
+from plaid.trees import FileTreeWidget, CIFTreeWidget
+from plaid.dialogs import H5Dialog, ExportSettingsDialog
+from plaid.reference import Reference
+from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
+from plaid.misc import q_to_tth, tth_to_q
+from plaid.data_containers import AzintData, AuxData
+import plaid.resources
 
 
 
@@ -1090,7 +1090,7 @@ class MainWindow(QMainWindow):
         self._save_dock_settings()
         event.accept()
 
-if __name__ == "__main__":
+def main():
     app = QApplication(sys.argv)
     # app.setStyle("Fusion")
     # get the application palette colors
@@ -1105,3 +1105,7 @@ if __name__ == "__main__":
     window.show()
 
     sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

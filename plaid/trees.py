@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem,
 from PyQt6 import QtCore
 from PyQt6.QtGui import QFont
 import pyqtgraph as pg
-from reference import validate_cif
+from plaid.reference import validate_cif
 
 colors = [
         '#AAAA00',  # Yellow

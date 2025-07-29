@@ -12,8 +12,8 @@ including loading data from HDF5 files, converting between q and 2theta, and nor
 import numpy as np
 from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
-from nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy
-from misc import q_to_tth, tth_to_q
+from plaid.nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy
+from plaid.misc import q_to_tth, tth_to_q
 
 
 class AzintData():
