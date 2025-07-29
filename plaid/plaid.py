@@ -1126,26 +1126,10 @@ def parse_args():
     return parser.parse_args()
 
 
-def main(files=None):
-    app = QApplication(sys.argv)
-    # app.setStyle("Fusion")
-    # get the application palette colors
-    foreground_color = app.palette().text().color().darker(150).name()
-    background_color = app.palette().window().color().darker(110).name()
-
-    pg.setConfigOptions(antialias=True,
-                        foreground=foreground_color,
-                        background=background_color,
-                        )
-    window = MainWindow()
-    if isinstance(files, list):
-        for file in files:
-            window.open_file(file)
-    window.show()
-    sys.exit(app.exec())
-
-
-if __name__ == "__main__":
+def main():
+    """Main function to run the application."""
+    global ALLOW_EXPORT_ALL_PATTERNS
+    # Parse command line arguments
     args = parse_args()
     
     if args.limit_export:
@@ -1161,6 +1145,27 @@ if __name__ == "__main__":
         files = [f for f in args.file if os.path.isfile(f)]
     else:
         files = None
-        
 
-    main(files)
+    # Create the application and main window
+    app = QApplication(sys.argv)
+    # app.setStyle("Fusion")
+    # get the application palette colors
+    foreground_color = app.palette().text().color().darker(150).name()
+    background_color = app.palette().window().color().darker(110).name()
+
+    pg.setConfigOptions(antialias=True,
+                        foreground=foreground_color,
+                        background=background_color,
+                        )
+    # Create the main window
+    window = MainWindow()
+    # open any files provided in the command line arguments
+    if isinstance(files, list):
+        for file in files:
+            window.open_file(file)
+    # show the main window
+    window.show()
+    sys.exit(app.exec())
+
+if __name__ == "__main__":
+    main()
