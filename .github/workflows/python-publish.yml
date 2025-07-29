@@ -26,11 +26,18 @@ jobs:
         with:
           python-version: "3.x"
 
-      - name: Build release distributions
+      - name: Install build dependencies
         run: |
-          # NOTE: put your own distribution build steps here.
-          python -m pip install build
-          python -m build
+          python -m pip install --upgrade pip
+          pip install build
+      #     python -m pip install -r build-requirements.txt
+
+      # - name: Install distribution tools
+      #   run: pip install --upgrade setuptools wheel twine
+          
+
+      - name: Build release distributions
+        run: python -m build
 
       - name: Upload distributions
         uses: actions/upload-artifact@v4
@@ -42,20 +49,6 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - release-build
-    permissions:
-      # IMPORTANT: this permission is mandatory for trusted publishing
-      id-token: write
-
-    # Dedicated environments with protections for publishing are strongly recommended.
-    # For more information, see: https://docs.github.com/en/actions/deployment/targeting-different-environments/using-environments-for-deployment#deployment-protection-rules
-    environment:
-      name: pypi
-      # OPTIONAL: uncomment and update to include your PyPI project URL in the deployment status:
-      # url: https://pypi.org/p/YOURPROJECT
-      #
-      # ALTERNATIVE: if your GitHub Release name is the PyPI project version string
-      # ALTERNATIVE: exactly, uncomment the following line instead:
-      # url: https://pypi.org/project/YOURPROJECT/${{ github.event.release.name }}
 
     steps:
       - name: Retrieve release distributions
@@ -68,3 +61,6 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/
+          # 'user: __token__' is required for PyPI token authentication
+          user: __token__
+          password: ${{ secrets.PYPI_TOKEN }}
