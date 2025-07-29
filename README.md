@@ -2,6 +2,13 @@
 plaid is a simple visualization tool intended to quickly evaluate azimuthally integrated powder diffraction data and compare to known structures, provided by the user in the form of CIF files.  
 The main data format is HDF5 files, inspired by the [NeXus](https://www.nexusformat.org/) file formats.  
 
+## Installation  
+Install plaid from the Python Package Index [PyPi](https://pypi.org/) with:  
+`pip install plaid-xrd`
+
+Start the application from a terminal with:  
+`plaid`
+
 ## Example  
 **The main window of plaid**  
 ![Example of the plaid main window](media/screenshot_main_dark.png)  

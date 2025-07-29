@@ -5,7 +5,10 @@ import os
 def readme():
     """Read the contents of the README file."""
     with open("README.md", "r", encoding="utf-8") as f:
-        return f.read()
+        lines = f.readlines()
+        # Remove lines containing '!['
+        lines = [line for line in lines if not line.startswith("![")]  
+        return "".join(lines)
 
 
 setup(
@@ -41,3 +44,4 @@ setup(
         ]
     },
 )
+
