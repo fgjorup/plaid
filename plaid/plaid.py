@@ -38,7 +38,6 @@ import plaid.resources
 
 # TODO/IDEAS
 # - Clean up the code and restructure
-# - check for expected folder structure for aux and I0 import  
 # - Expand the Help menu 
 # - Export patterns
 #     > Add an "Export average pattern" toolbar button
@@ -151,6 +150,7 @@ def clear_recent_refs_settings():
 
 
 class MainWindow(QMainWindow):
+    """plaid - Main application window for plotting azimuthally integrated data."""
     def __init__(self):
         super().__init__()
 
@@ -160,12 +160,12 @@ class MainWindow(QMainWindow):
         self.setWindowIcon(QIcon(":/icons/plaid.png"))
     
         self.E = None  # Energy in keV
-        self.is_Q = False
-        # self.y_avg = None
+        self.is_Q = False # flag to indicate if the data is in Q space (True) or 2theta space (False)
 
         self.azint_data = AzintData()
         self.aux_data = {}
 
+        # create the export settings dialog
         self.export_settings_dialog = ExportSettingsDialog(self)
         self.export_settings_dialog.set_settings(self._load_export_settings())
         self.export_settings_dialog.sigSaveAsDefault.connect(self._save_export_settings)
@@ -181,7 +181,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         self.centralWidget().setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-
+        # Create the heatmap widget
         self.heatmap = HeatmapWidget()
 
         # Create the PatternWidget
@@ -191,6 +191,34 @@ class MainWindow(QMainWindow):
         plot_layout.addWidget(self.heatmap,1)
         plot_layout.addWidget(self.pattern,1, alignment=QtCore.Qt.AlignmentFlag.AlignLeft)# | QtCore.Qt.AlignmentFlag.AlignTop, )
 
+        # Create the dock widgets
+        self._init_file_tree()
+        self._init_cif_tree()
+        self._init_auxiliary_plot()
+        # Add the dock widgets to the main window
+        self._init_dock_widget_settings()
+
+        # initialize the widget connections
+        # This connects the signals and slots between the widgets
+        self._init_connections()
+
+        # add initial horizontal and vertical lines to the heatmap and auxiliary plot
+        self.heatmap.addHLine()
+        self.auxiliary_plot.addVLine()
+
+        # initialize the menu bar menus
+        self._init_menu_bar()
+
+        # override the resize event to update the pattern width
+        self.centralWidget().resizeEvent = self.resizeEvent
+
+        # set the initial widths of the dock widgets
+        self.resizeDocks([self.file_tree_dock, self.cif_tree_dock, self.auxiliary_plot_dock],
+                         [250, 250, 250], 
+                         QtCore.Qt.Orientation.Horizontal)
+
+    def _init_file_tree(self):
+        """Initialize the file tree widget. Called by self.__init__()."""
         # Create the file tree widget
         self.file_tree = FileTreeWidget()
         # create a dock widget for the file tree
@@ -198,7 +226,10 @@ class MainWindow(QMainWindow):
         file_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         file_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         file_tree_dock.setWidget(self.file_tree)
+        self.file_tree_dock = file_tree_dock
 
+    def _init_cif_tree(self):
+        """Initialize the CIF tree widget. Called by self.__init__()."""
         # Create the CIF tree widget
         self.cif_tree = CIFTreeWidget(self)
         # create a dock widget for the CIF tree
@@ -206,21 +237,27 @@ class MainWindow(QMainWindow):
         cif_tree_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         cif_tree_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         cif_tree_dock.setWidget(self.cif_tree)
-  
+        self.cif_tree_dock = cif_tree_dock
+
+    def _init_auxiliary_plot(self):
+        """Initialize the auxiliary plot widget. Called by self.__init__()."""
         self.auxiliary_plot = AuxiliaryPlotWidget()
         # create a dock widget for the auxiliary plot
         auxiliary_plot_dock = QDockWidget("Auxiliary Plot", self)
         auxiliary_plot_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
         auxiliary_plot_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
         auxiliary_plot_dock.setWidget(self.auxiliary_plot)
-        
+        self.auxiliary_plot_dock = auxiliary_plot_dock
+
+    def _init_dock_widget_settings(self):
+        """Initialize the dock widgets based on previously saved settings. Called by self.__init__()."""
         # get the current dock widget settings (if any)
         left, right = self._load_dock_settings()
         # if settings for all three dock widgets are available
         if len(left) + len(right) == 3:
-            dock_widgets = {file_tree_dock.windowTitle(): file_tree_dock,
-                            cif_tree_dock.windowTitle(): cif_tree_dock,
-                            auxiliary_plot_dock.windowTitle(): auxiliary_plot_dock}
+            dock_widgets = {self.file_tree_dock.windowTitle(): self.file_tree_dock,
+                            self.cif_tree_dock.windowTitle(): self.cif_tree_dock,
+                            self.auxiliary_plot_dock.windowTitle(): self.auxiliary_plot_dock}
             for [key,is_visible] in left:
                 dock = dock_widgets[key]
                 self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, dock)
@@ -229,42 +266,48 @@ class MainWindow(QMainWindow):
                 dock = dock_widgets[key]
                 self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, dock)
                 dock.setVisible(is_visible)
-
         else:
-            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, file_tree_dock)
-            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, cif_tree_dock)
-            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, auxiliary_plot_dock)
-
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.file_tree_dock)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.cif_tree_dock)
+            self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.auxiliary_plot_dock)
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
- 
+
+    def _init_connections(self):
+        """Initialize the connections between the widgets. Called by self.__init__()."""
+        # Connect the file tree signals to the appropriate slots
         self.file_tree.sigItemDoubleClicked.connect(self.load_file)
         self.file_tree.sigGroupDoubleClicked.connect(self.load_file)
         self.file_tree.sigItemRemoved.connect(self.remove_file)
         self.file_tree.sigI0DataRequested.connect(self.load_I0_data)
         self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data)
-
+        # Connect the CIF tree signals to the appropriate slots
         self.cif_tree.sigItemAdded.connect(self.add_reference)
         self.cif_tree.sigItemChecked.connect(self.toggle_reference)
         self.cif_tree.sigItemDoubleClicked.connect(self.rescale_reference)
-
+        # Connect the heatmap signals to the appropriate slots
         self.heatmap.sigHLineMoved.connect(self.hline_moved)
         self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange)
         self.heatmap.sigImageDoubleClicked.connect(self.add_pattern)
         self.heatmap.sigImageHovered.connect(self._update_status_bar)
-        #self.heatmap.sigHLineAdded.connect(self.add_pattern)
         self.heatmap.sigHLineRemoved.connect(self.remove_pattern)
-
+        # Connect the pattern signals to the appropriate slots
         self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)
         self.pattern.sigPatternHovered.connect(self.update_status_bar)
-
+        # Connect the auxiliary plot signals to the appropriate slots
         self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
         self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
 
-        self.heatmap.addHLine()
-        self.auxiliary_plot.addVLine()
-
+    def _init_menu_bar(self):
+        """Initialize the menu bar with the necessary menus and actions. Called by self.__init__()."""
         # Create a menu bar
         menu_bar = self.menuBar()
+        self._init_file_menu(menu_bar)
+        self._init_view_menu(menu_bar)
+        self._init_export_menu(menu_bar)
+        self._init_help_menu(menu_bar)
+
+    def _init_file_menu(self, menu_bar):
+        """Initialize the File menu with actions for loading files and references. Called by self._init_menu_bar()."""
         # Create a file menu
         file_menu = menu_bar.addMenu("&File")
         # Add an action to load azimuthal integration data
@@ -314,21 +357,20 @@ class MainWindow(QMainWindow):
             recent_references_menu.setEnabled(False)
             recent_references_menu.setToolTip("No recent references available")
 
-
-
-
+    def _init_view_menu(self, menu_bar):
+        """Initialize the View menu with actions to toggle visibility of dock widgets and auxiliary plots. Called by self._init_menu_bar()."""
         # create a view menu
         view_menu = menu_bar.addMenu("&View")
         # Add an action to toggle the file tree visibility
-        toggle_file_tree_action = file_tree_dock.toggleViewAction()
+        toggle_file_tree_action = self.file_tree_dock.toggleViewAction()
         toggle_file_tree_action.setText("Show &File Tree")
         view_menu.addAction(toggle_file_tree_action)
         # Add an action to toggle the CIF tree visibility
-        toggle_cif_tree_action = cif_tree_dock.toggleViewAction()
+        toggle_cif_tree_action = self.cif_tree_dock.toggleViewAction()
         toggle_cif_tree_action.setText("Show &CIF Tree")
         view_menu.addAction(toggle_cif_tree_action)
         # Add an action to toggle the auxiliary plot visibility
-        toggle_auxiliary_plot_action = auxiliary_plot_dock.toggleViewAction()
+        toggle_auxiliary_plot_action = self.auxiliary_plot_dock.toggleViewAction()
         toggle_auxiliary_plot_action.setText("Show &Auxiliary Plot")
         view_menu.addAction(toggle_auxiliary_plot_action)
         # add a separator
@@ -341,6 +383,8 @@ class MainWindow(QMainWindow):
         view_menu.addAction(toggle_q_action)
         self.toggle_q_action = toggle_q_action
 
+    def _init_export_menu(self, menu_bar):
+        """Initialize the Export menu with actions to export patterns and settings. Called by self._init_menu_bar()."""
         # create an export menu
         export_menu = menu_bar.addMenu("&Export")
         # Add an action to export the average pattern
@@ -370,7 +414,8 @@ class MainWindow(QMainWindow):
         export_settings_action.triggered.connect(self.export_settings_dialog.open)
         export_menu.addAction(export_settings_action)
 
-
+    def _init_help_menu(self, menu_bar):
+        """Initialize the Help menu with actions to show help and about dialogs. Called by self._init_menu_bar()."""
         # create a help menu
         help_menu = menu_bar.addMenu("&Help")
         # Add an action to show the help dialog
@@ -384,30 +429,12 @@ class MainWindow(QMainWindow):
         about_action.triggered.connect(self.show_about_dialog)
         help_menu.addAction(about_action)
 
-
-  
-        self.centralWidget().resizeEvent = self.resizeEvent
-
-
-
-        # TEST
-        #fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\raw\pxrd_cryo\scan-0100.h5"
-        #aname = fname.replace("\\raw", "\\process\\azint").replace(".h5", "_pilatus_integrated.h5")
-        #self.file_tree.add_file(aname)
-        #self.load_file(aname)
-        #self.load_auxiliary_data(fname)
-        #h5dialog = H5Dialog(self, fname)
-        #h5dialog.open()
-        # h5dialog.finished.connect(lambda result: print(f"H5Dialog finished with result: {result}"))
-        #h5dialog.finished.connect(lambda result: print(h5dialog.selected_items) if result == QDialog.DialogCode.Accepted else print("H5Dialog cancelled"))
-
-
-        self.resizeDocks([file_tree_dock, cif_tree_dock, auxiliary_plot_dock], [250, 250, 250], QtCore.Qt.Orientation.Horizontal)
-
-
-
     def add_pattern(self, pos):
-        """Add a horizontal line to the heatmap and an accompanying pattern."""
+        """
+        Add a horizontal line to the heatmap and an accompanying pattern.
+        This method is called when the user double-clicks on the heatmap, 
+        using the position of the double-click to determine which frame to plot.
+        """
         index = int(np.clip(pos[1], 0, self.azint_data.shape[0]-1))
         y = self.azint_data.get_I(index=index)  # Get the intensity data for the current frame
         self.heatmap.addHLine(pos=index)
@@ -418,14 +445,20 @@ class MainWindow(QMainWindow):
         # add a vertical line to the auxiliary plot
         self.auxiliary_plot.addVLine(pos=index)
 
-
     def remove_pattern(self, index):
-        """Remove a pattern."""
+        """
+        Remove a pattern from the pattern plot.  
+        Called when a horizontal line is removed from the heatmap.
+        """
         self.pattern.remove_pattern(index)
         self.auxiliary_plot.remove_v_line(index)
 
     def remove_file(self, file):
-        """Handle the removal of a file from the file tree."""
+        """
+        Handle the removal of a file from the file tree, by
+        clearing the azint_data and auxiliary plot if relevant.
+        Called when a file is removed from the file tree.
+        """
         if file in self.azint_data.fnames:
             self.azint_data = AzintData(self)
             self.heatmap.clear()
@@ -434,7 +467,6 @@ class MainWindow(QMainWindow):
 
         if file in self.aux_data.keys():
             del self.aux_data[file]
-
 
     def resizeEvent(self, event):
         """Handle the resize event to update the pattern width."""
@@ -446,6 +478,11 @@ class MainWindow(QMainWindow):
         self.pattern.plot_widget.setFixedWidth(self.heatmap.plot_widget.width())
 
     def _update_status_bar(self, x_idx, y_idx):
+        """
+        Update the status bar with the current position in the heatmap
+        by passing the x and y indices to the update_status_bar method.
+        This method is called when the user hovers over the heatmap.
+        """
         if self.azint_data.x is None:
             return
         if self.is_Q:
@@ -456,9 +493,11 @@ class MainWindow(QMainWindow):
         y_value = self.azint_data.get_I(index=y_idx)[x_idx] if self.azint_data.I is not None else 0
         self.update_status_bar(x_value, y_value)
 
-
     def update_status_bar(self, x_value, y_value):
-        """Update the status bar with the current position."""
+        """
+        Update the status bar with the current cursor position for the heatmap
+        and pattern plots. Includes both Q and d-spacing if the energy is available.
+        """
         if self.azint_data.x is None:
             return
         if self.is_Q:
@@ -485,8 +524,8 @@ class MainWindow(QMainWindow):
 
     def open_file(self,file_path=None):
         """
-        Open a file dialog to select an azimuthal integration file
-        and add it to the file tree.
+        Open the optional provided file path or a file dialog to select an azimuthal 
+        integration file and add it to the file tree.
         """
         if not file_path:
             # prompt the user to select a file
@@ -503,9 +542,14 @@ class MainWindow(QMainWindow):
             # add the file to the file tree
             self.file_tree.add_file(file_path,shape)
         
-
     def load_file(self, file_path, item=None):
-        """Load the selected file and update the heatmap and pattern."""
+        """
+        Load the selected file and update the heatmap and pattern.
+        This method is called both when a new file is add by the 
+        open_file method and when a file is reloaded, for instance
+        when a file is double-clicked in the file tree.
+        If the file is already loaded, it will be reloaded.
+        """
         if isinstance(file_path, str):
             file_path = [file_path]  # Ensure file_path is a list
         self.azint_data = AzintData(self,file_path)
@@ -593,13 +637,15 @@ class MainWindow(QMainWindow):
         self.heatmap.set_h_line_pos(index, pos)
 
     def update_pattern(self, index, pos):
+        """Update the pattern plot with the data from the selected frame in the heatmap.
+        This method is called when a horizontal line is moved in the heatmap or when a new pattern is added."""
         # Get the selected frame from the heatmap
         y = self.azint_data.get_I(index=pos)
         self.pattern.set_data(y=y, index=index)
         self.pattern.set_pattern_name(name=f"frame {pos}", index=index)
 
     def update_all_patterns(self):
-        """Update all patterns with the current data."""
+        """Update all patterns with the current data. Called when a new file is (re)loaded."""
         for i,pos in enumerate(self.heatmap.get_h_line_positions()):
             self.update_pattern(i,pos)
 
@@ -617,7 +663,7 @@ class MainWindow(QMainWindow):
         self.cif_tree.add_file(file_path)
 
     def add_reference(self, cif_file, Qmax=None):
-        """Add a reference pattern from a CIF file."""
+        """Add a reference pattern from a CIF file to the pattern plot."""
         if self.E is None:
             self.E = self.azint_data.user_E_dialog()
             if self.E is None:
@@ -629,7 +675,7 @@ class MainWindow(QMainWindow):
         self.plot_reference()
 
     def plot_reference(self, Qmax=None, dmin=None):
-        """Plot the reference pattern."""
+        """Plot the reference pattern in the pattern plot."""
         if Qmax is None:
             Qmax = self.getQmax()
         hkl, d, I = self.ref.get_reflections(Qmax=Qmax, dmin=dmin)
@@ -645,21 +691,33 @@ class MainWindow(QMainWindow):
             x = np.degrees(2 * np.arcsin((12.398 / self.E) / (2 * d)))
         self.pattern.add_reference(hkl, x, I)
 
-    
     def toggle_reference(self, index, is_checked):
-        """Toggle the visibility of the reference pattern."""
+        """
+        Toggle the visibility of the reference pattern.
+        Called when a reference item is checked or unchecked in the CIF tree.
+        """
         self.pattern.toggle_reference(index, is_checked)
 
     def rescale_reference(self,index,name):
-        """Rescale the intensity of the indexed reference to the current y-max"""
+        """
+        Rescale the intensity of the indexed reference to the current y-max.
+        This method is called when a reference item is double-clicked in the CIF tree.
+        """
         self.pattern.rescale_reference(index)
 
     def load_I0_data(self, aname=None, fname=None):
-        """Load auxillary data as I0"""
+        """Load auxillary data as I0. Called when the user requests I0 data from the file tree."""
         self.load_auxiliary_data(aname=aname, is_I0=True)
 
     def load_auxiliary_data(self, aname=None, fname=None, is_I0=False):
-        """Handle the auxiliary data file name and open the H5Dialog."""
+        """
+        Open a an HDF5 file dialog to select auxiliary/I0 data.
+        Once the dialog is closed, the selected data is added to the AuxData
+        instance as either I0 data or auxiliary data.
+        If an azimuthal data file name (aname) is provided, it is used to
+        look for a raw file location, assuming the structure
+        */process/azint/*/*.h5 -> */raw/*/*.h5
+        """
         if fname is None:
             # prompt the user to select a file
             if aname is not None:
@@ -691,7 +749,7 @@ class MainWindow(QMainWindow):
             self.h5dialog.finished.connect(self.add_auxiliary_data)
 
     def add_I0_data(self,is_ok):
-        """Add I0 data to the azint data instance."""
+        """Add I0 data from the h5dialog to the azint data instance."""
         if not is_ok:
             return
         # Assume the first selected item is the I0 data
@@ -731,7 +789,7 @@ class MainWindow(QMainWindow):
             self.load_file(self.azint_data.fnames[0],self.file_tree.get_aux_target_item())
 
     def add_auxiliary_data(self,is_ok):
-        """Add auxiliary data to the azint data instance."""
+        """Add auxiliary data from the h5dialog to the azint data instance."""
         if not is_ok:
             return
         aux_data = {}
@@ -773,6 +831,7 @@ class MainWindow(QMainWindow):
             return 4 * np.pi / (12.398 / self.E) * np.sin(np.radians(np.max(self.pattern.x)) / 2)
         
     def toggle_q(self):
+        """Toggle between Q and 2theta in the heatmap and pattern plots."""
         # Toggle between q and 2theta
         if self.E is None:
             self.E = self.azint_data.user_E_dialog()
@@ -812,6 +871,16 @@ class MainWindow(QMainWindow):
                 ref_item.setData(x=_x, y=_y)
 
     def _prepare_export_settings(self):
+        """
+        Prepare the export settings for exporting patterns, based
+        on the current export settings dialog.
+        Returns:
+            ext (str): The file extension for the export.
+            pad (int): The number of leading zeros for the file name.
+            is_Q (bool): Whether to export in Q or 2theta.
+            I0_normalized (bool): Whether to normalize the intensity by I0.
+            kwargs (dict): Additional keyword arguments for np.savetxt.
+        """
         # get a dictionary of the export settings
         export_settings = self.export_settings_dialog.get_settings()
         # extension
@@ -867,7 +936,6 @@ class MainWindow(QMainWindow):
         # I0 normalization
         I0_normalized = export_settings['I0_checkbox']
 
-
         return ext, pad, is_Q, I0_normalized, kwargs
 
     def export_pattern(self):
@@ -906,7 +974,17 @@ class MainWindow(QMainWindow):
                     QMessageBox.critical(self, "Error", f"Failed to export average pattern to {fname}.")
 
     def export_all_patterns(self):
-        """Export all patterns to double-column files."""
+        """
+        Export all patterns to double-column files.
+        This method prompts the user for a directory to save the files,
+        and then exports each pattern in the azint_data to a file.
+        This method can be disabled by setting the ALLOW_EXPORT_ALL_PATTERNS 
+        variable to False in the plaid.py module or by passing the --limit-export
+        command line argument when running the application.
+        """
+        if not ALLOW_EXPORT_ALL_PATTERNS:
+            QMessageBox.warning(self, "Export Not Allowed", "Exporting all patterns is not allowed in this version.")
+            return
         if not self.azint_data.fnames:
             QMessageBox.warning(self, "No Data", "No azimuthal integration data loaded.")
             return
@@ -948,6 +1026,7 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "Complete", f"Complete!\nExported {self.azint_data.shape[0]} patterns to:\n{directory}")
 
     def dragEnterEvent(self, event):
+        """Handle drag and drop events for the main window."""
         if event.mimeData().hasUrls():
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
                 self.cif_tree.dragEnterEvent(event)
@@ -955,6 +1034,7 @@ class MainWindow(QMainWindow):
                 self.file_tree.dragEnterEvent(event)
     
     def dropEvent(self, event):
+        """Handle drop events for the main window."""
         if event.mimeData().hasUrls():
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
                 self.cif_tree.dropEvent(event)
