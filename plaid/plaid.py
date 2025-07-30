@@ -37,30 +37,22 @@ import plaid.resources
 
 
 # TODO/IDEAS
-
+# - Clean up the code and restructure
+# - check for expected folder structure for aux and I0 import  
 # - Expand the Help menu 
-
 # - Export patterns
 #     > Add an "Export average pattern" toolbar button
 #     > Add an "Export selected pattern(s)" toolbar button
 #     > Add an "Export all patterns" toolbar button
-
-
 # - Make a more robust file loading mechanism that can handle different file formats and 
 #   structures, perhaps as a "select signal/axis" dialog for arbitrary .h5 files.
-
-# - replace print warnings/messages with QMessageBox dialogs
-
 # - handle arbitrary .h5 file drag drop
 #     > if the dropped file is recognized as a azint file, load it and add it to the file tree
 #     > if not, prompt the user to load it as auxiliary data. Future versions could allow for custom azint readers?
-
 # - add an option to "group"  data files in the file tree. Perhaps "append file below" and "insert file above" actions to group files together?
 #     > Find a way to handle I0 data
 # - save additional settings like default path(s), dock widget positions, etc.
-
 # - optimize memory usage and performance for large datasets
-
 # - add more tooltips
 
 ALLOW_EXPORT_ALL_PATTERNS = True
@@ -662,16 +654,29 @@ class MainWindow(QMainWindow):
         """Rescale the intensity of the indexed reference to the current y-max"""
         self.pattern.rescale_reference(index)
 
-    def load_I0_data(self, fname=None):
+    def load_I0_data(self, aname=None, fname=None):
         """Load auxillary data as I0"""
-        self.load_auxiliary_data(is_I0=True)
+        self.load_auxiliary_data(aname=aname, is_I0=True)
 
-    def load_auxiliary_data(self, fname=None, is_I0=False):
+    def load_auxiliary_data(self, aname=None, fname=None, is_I0=False):
         """Handle the auxiliary data file name and open the H5Dialog."""
         if fname is None:
             # prompt the user to select a file
-            if self.file_tree.files[-1] is not None:
-                default_dir = os.path.dirname(self.file_tree.files[-1])
+            if aname is not None:
+                # look for a default "raw" directory based on the file name
+                # of the azimuthal integration data (aname), assuming the
+                # structure */process/azint/*/*.h5 -> */raw/*/*.h5
+
+                # get the absolute directory of the azint file
+                adir = os.path.dirname(os.path.abspath(aname))
+                # look for the raw directory in both Windows and Unix style paths
+                if os.path.exists(adir.replace("\\process\\azint", "\\raw")):
+                    default_dir = adir.replace("\\process\\azint", "\\raw")
+                elif os.path.exists(adir.replace("/process/azint", "/raw")):
+                    default_dir = adir.replace("/process/azint", "/raw")
+                elif os.path.exists(adir):
+                    # if the default directory does not exist, use the directory of the azint file
+                    default_dir = adir
             else:
                 default_dir = os.path.expanduser("~")
             fname, ok = QFileDialog.getOpenFileName(self, "Select Auxiliary Data File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
@@ -725,8 +730,6 @@ class MainWindow(QMainWindow):
             # if the target name is already in the azint data, update it
             self.load_file(self.azint_data.fnames[0],self.file_tree.get_aux_target_item())
 
-
-
     def add_auxiliary_data(self,is_ok):
         """Add auxiliary data to the azint data instance."""
         if not is_ok:
@@ -745,7 +748,6 @@ class MainWindow(QMainWindow):
         # Update the auxiliary plot with the new data
         self.add_auxiliary_plot(target_name)
 
-
     def add_auxiliary_plot(self, selected_item):
         """Add an auxiliary plot"""
         if not selected_item in self.aux_data:
@@ -758,8 +760,7 @@ class MainWindow(QMainWindow):
                 continue
             if data is not None and data.ndim == 1:
                 # If the data is 1D, plot it directly
-                self.auxiliary_plot.set_data(data, label=alias)
-            
+                self.auxiliary_plot.set_data(data, label=alias)   
 
     def getQmax(self):
         """Get the maximum Q value of the current pattern"""
@@ -946,7 +947,6 @@ class MainWindow(QMainWindow):
         # inform the user that the export is done
         QMessageBox.information(self, "Complete", f"Complete!\nExported {self.azint_data.shape[0]} patterns to:\n{directory}")
 
-
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls():
             if all(url.toLocalFile().endswith('.cif') for url in event.mimeData().urls()):
@@ -965,8 +965,6 @@ class MainWindow(QMainWindow):
                     if file_path.endswith('.h5'):
                         self.open_file(file_path)
                 event.acceptProposedAction()
-
-
 
     def keyReleaseEvent(self, event):
         """Handle key release events."""
@@ -1002,7 +1000,6 @@ class MainWindow(QMainWindow):
         #     print(self.file_tree.files)
         #     self.load_file(self.file_tree.files)
         
-           
     def _save_dock_settings(self):
         """Save the dock widget settings."""
         settings = QtCore.QSettings("plaid", "plaid")
@@ -1041,7 +1038,6 @@ class MainWindow(QMainWindow):
             export_settings.setValue(key, value)
         export_settings.endGroup()
 
-
     def _load_export_settings(self):
         """Load the export settings."""
         export_settings = QtCore.QSettings("plaid", "plaid")
@@ -1051,8 +1047,6 @@ class MainWindow(QMainWindow):
             settings[key] = export_settings.value(key)
         export_settings.endGroup()
         return settings
-
-
 
     def show_help_dialog(self):
         """Show the help dialog."""

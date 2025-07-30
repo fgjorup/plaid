@@ -29,8 +29,8 @@ class FileTreeWidget(QWidget):
     sigItemDoubleClicked = QtCore.pyqtSignal(str,object)
     sigGroupDoubleClicked = QtCore.pyqtSignal(list,list)
     sigItemRemoved = QtCore.pyqtSignal(str)
-    sigI0DataRequested = QtCore.pyqtSignal()
-    sigAuxiliaryDataRequested = QtCore.pyqtSignal()
+    sigI0DataRequested = QtCore.pyqtSignal(str)
+    sigAuxiliaryDataRequested = QtCore.pyqtSignal(str)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.files = []  # List to store file paths
@@ -179,7 +179,7 @@ class FileTreeWidget(QWidget):
                 item.removeChild(item.child(i))
                 break
         # Emit a signal to request I0 data for item
-        self.sigI0DataRequested.emit()
+        self.sigI0DataRequested.emit(self.files[index])
 
     def request_auxiliary_data(self, item):
         """Request auxiliary data for the selected item."""
@@ -191,7 +191,7 @@ class FileTreeWidget(QWidget):
         #for i in range(item.childCount()):
         #    item.removeChild(item.child(0))
         # Emit a signal to request auxiliary data for item
-        self.sigAuxiliaryDataRequested.emit()
+        self.sigAuxiliaryDataRequested.emit(self.files[index])
 
     def group_selected_items(self):
         """Group the selected items together."""
