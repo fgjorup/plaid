@@ -27,7 +27,7 @@ class H5Dialog(QDialog):
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(['Content', 'Shape'])
         self.file_tree.setSortingEnabled(False)
-        self.layout().addWidget(self.file_tree)
+        self.layout().addWidget(self.file_tree,2)
         self.file_tree.itemDoubleClicked.connect(self.item_double_clicked)
         self._populate_tree(file_path)
         self.file_tree.header().setSectionResizeMode(1,self.file_tree.header().ResizeMode.Fixed)
@@ -42,7 +42,7 @@ class H5Dialog(QDialog):
         self.selected_tree = QTreeWidget()
         self.selected_tree.setHeaderLabels(['Alias', 'Path', 'Shape'])
         self.selected_tree.setSortingEnabled(False)
-        self.layout().addWidget(self.selected_tree)
+        self.layout().addWidget(self.selected_tree, 1)
         self.selected_tree.itemDoubleClicked.connect(self.edit_alias)
 
         # add a horizontal layout for the accept/cancel buttons
@@ -63,6 +63,8 @@ class H5Dialog(QDialog):
         button_layout.addWidget(self.cancel_button)
 
         self.keyPressEvent = self.keyPressEventHandler
+
+        self.resize(350, 500)  # Set a default size for the dialog
 
 
 
