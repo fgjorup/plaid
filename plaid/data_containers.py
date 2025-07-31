@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
 from plaid.nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy
 from plaid.misc import q_to_tth, tth_to_q
+from plaid.dialogs import H5Dialog
 
 
 class AzintData():
@@ -55,6 +56,9 @@ class AzintData():
         I = np.array([[],[]])
         for fname in self.fnames:
             x, I_, is_q, E = self._load_func(fname)
+            if x is None or I_ is None:
+                print(f"Error loading data from {fname}.")
+                return False
             I = np.append(I, I_, axis=0) if I.size else I_
         #I = np.array(I)
         self.x = x
@@ -213,8 +217,10 @@ class AzintData():
             elif 'I' in f:
                 self._load_func =   self._load_DM_old
             else:
-                print("File type not recognized. Please provide a valid azimuthal integration file.")
-                self._load_func =   None
+                # Attempt to load using the H5Dialog if no specific structure is found
+                self._load_func = self._load_dialog
+                #print("File type not recognized. Please provide a valid azimuthal integration file.")
+                #self._load_func =   None
 
     def _load_azint(self, fname):
         """Load azimuthal integration data from a nxazint HDF5 file."""
@@ -273,6 +279,28 @@ class AzintData():
             I = f['I'][:]
         return x, I, is_q, None
     
+    def _load_dialog(self, fname):
+        """
+        Load azimuthal integration data from an h5 file dialog.  
+        This function is used as a last resort if no other load function is found.
+        """
+        dialog = H5Dialog(self.parent, fname)
+        if not dialog.exec_1d_2d_pair():
+            return None, None, None, None
+
+        selected = dialog.get_selected_items() # list of tuples with (alias, full_path, shape)
+        axis = [item for item in selected if not "×" in item[2]][0] 
+        signal = [item for item in selected if "×" in item[2]][0]
+        # Check if the shape of the axis and signal match
+        if not axis[2] in signal[2].split("×")[1]:
+            QMessageBox.critical(self.parent, "Error", f"Error: The shape of the axis {axis[2]} does not match the shape of the signal {signal[2]}.")
+            return None, None, None, None
+        with h5.File(fname, 'r') as f:
+            x = f[axis[1]][:]
+            I = f[signal[1]][:]
+            # attempt to guess if the axis is q or 2theta
+            is_q = 'q' in axis[0].lower() or 'q' in f[axis[1]].attrs.get('long_name', '').lower()
+        return x, I, is_q, None
 
     def _export_xy(self, fname, x, y, kwargs={}):
         """

@@ -11,7 +11,8 @@ including loading files, displaying heatmaps and patterns, and managing auxiliar
 import sys
 import os
 import numpy as np
-from PyQt6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget, QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QDialog
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, 
+                             QDockWidget, QSizePolicy, QFileDialog, QMessageBox, QProgressDialog)
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
@@ -34,6 +35,14 @@ from plaid.data_containers import AzintData, AuxData
 import plaid.resources
 
 
+# # debug fn to show who is calling what and when to find out why.
+# import inspect
+# def print_stack(context=True):
+#     print('>----|')
+#     if context:
+#         print('\n'.join([f"{x.lineno:>5}| {x.function} > {''.join(x.code_context).strip()}" for x in inspect.stack()][1:][::-1]))
+#     else:
+#         print('\n'.join([f"{x.lineno:>5}| {x.function}" for x in inspect.stack()][1:][::-1]))
 
 
 # TODO/IDEAS
@@ -742,7 +751,7 @@ class MainWindow(QMainWindow):
                 return
         
         self.h5dialog = H5Dialog(self, fname)
-        self.h5dialog.open()
+        self.h5dialog.open_1d()
         if is_I0:
             self.h5dialog.finished.connect(self.add_I0_data)
         else:
@@ -796,8 +805,8 @@ class MainWindow(QMainWindow):
         target_name, target_shape = self.file_tree.get_aux_target_name()
         if not target_name in self.aux_data.keys():
             self.aux_data[target_name] = AuxData(self)
-        with h5.File(self.h5dialog.file_path, 'r') as f:
-            for [alias,file_path,shape] in self.h5dialog.selected_items:
+        with h5.File(self.h5dialog.get_file_path(), 'r') as f:
+            for [alias,file_path,shape] in self.h5dialog.get_selected_items():
                 aux_data[alias] =  f[file_path][:]
                 self.file_tree.add_auxiliary_item(alias,shape)
                 self.aux_data[target_name].add_data(alias, f[file_path][:])
@@ -1076,10 +1085,34 @@ class MainWindow(QMainWindow):
             self.heatmap.move_active_h_line(-delta)
 
         # # DEBUG
-        # elif event.key() == QtCore.Qt.Key.Key_Space:
-        #     print(self.file_tree.files)
-        #     self.load_file(self.file_tree.files)
-        
+        elif event.key() == QtCore.Qt.Key.Key_Space:
+            # h5dialog = H5Dialog(self, self.azint_data.fnames[0])
+            # if h5dialog.exec_1d_2d_pair():
+            #     selected = h5dialog.get_selected_items()
+            #     axis = [item for item in selected if not "×" in item[2]][0]
+            #     signal = [item for item in selected if "×" in item[2]][0]
+            # print('axis:', axis)
+            # print('signal:', signal)
+            # fname = self.azint_data.fnames[0] 
+            # dialog = H5Dialog(self, fname)
+            # if not dialog.exec_1d_2d_pair():
+            #     print( None, None, None, None)
+
+            # selected = dialog.get_selected_items() # list of tuples with (alias, full_path, shape)
+            # axis = [item for item in selected if not "×" in item[2]][0] 
+            # signal = [item for item in selected if "×" in item[2]][0]
+            # # Check if the shape of the axis and signal match
+            # if not axis[2] in signal[2].split("×")[1]:
+            #     print(f"Error: The shape of the axis {axis[2]} does not match the shape of the signal {signal[2]}.")
+            #     print( None, None, None, None)
+            # with h5.File(fname, 'r') as f:
+            #     x = f[axis[1]][:]
+            #     I = f[signal[1]][:]
+            #     # attempt to guess if the axis is q or 2theta
+            #     is_q = 'q' in axis[0].lower() or 'q' in f[axis[1]].attrs.get('long_name', '').lower()
+            # print(x, I, is_q, None)
+            pass
+
     def _save_dock_settings(self):
         """Save the dock widget settings."""
         settings = QtCore.QSettings("plaid", "plaid")
