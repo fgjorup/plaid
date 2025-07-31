@@ -25,7 +25,6 @@ setup(
         "numpy",
         "h5py",
         "PyQt6>=6.8.1",
-        "PySide6>=6.8.2.1",
         "pyqtgraph>=0.13.7",
         "Dans-Diffraction>=3.0.0"
     ],
