@@ -74,6 +74,17 @@ def get_nx_energy(f):
 # If no energy or wavelength is found, return None
     return None    
 
+def get_nx_monitor(f):
+    """Get the data from a monitor nexus dset from a nexus hdf5 file."""
+    entry = get_nx_entry(f)
+    if entry is None:
+        return None
+    monitor = get_nx_group(entry, 'monitor', 'NXmonitor')
+    if monitor is None:
+        return None
+    if 'data' in monitor:
+        return monitor['data'][:]
+
 def get_nx_group(gr, name, nxclass=None):
     """Get a generic nexus group with a specific name or nxclass from a group."""
     if gr is None:

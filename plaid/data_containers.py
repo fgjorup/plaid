@@ -12,15 +12,30 @@ including loading data from HDF5 files, converting between q and 2theta, and nor
 import numpy as np
 from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
-from plaid.nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy
+from plaid.nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy, get_nx_monitor
 from plaid.misc import q_to_tth, tth_to_q
 from plaid.dialogs import H5Dialog
 
 
 class AzintData():
-    """A class to hold azimuthal integration data."""
+    """
+    A class to hold azimuthal integration data.
+    Parameters:
+    - parent: The parent widget, usually the main window.
+    - fnames: A list of file names to load the azimuthal integration data from.
+    - look_for_I0: If True, attempts to load I0 data from a nxmonitor dataset in the file(s).
+    Attributes:
+    - x: The radial axis data (2theta or q).
+    - I: The intensity data.
+    - y_avg: The average intensity data.
+    - is_q: A boolean indicating if the radial axis is in q or 2theta.
+    - E: The energy data, if available.
+    - I0: The I0 data, if available.
+    - shape: The shape of the intensity data.
+    - look_for_I0: A boolean indicating if the class should look for I0 data in the file(s).
+    """
 
-    def __init__(self, parent=None,fnames=None):
+    def __init__(self, parent=None,fnames=None, look_for_I0=True):
         self.parent = parent
         if isinstance(fnames, str):
             fnames = [fnames]
@@ -32,6 +47,7 @@ class AzintData():
         self.E = None
         self.I0 = None
         self.shape = None  # Shape of the intensity data
+        self.look_for_I0 = look_for_I0
         self._load_func = None
         #self.aux_data = {} # {alias: np.array}
 
@@ -67,6 +83,36 @@ class AzintData():
         self.E = E
         self.y_avg = I.mean(axis=0)
         self.shape = I.shape
+ 
+        if self.look_for_I0 and self._load_func == self._load_azint:
+            # If the data is loaded from a nxazint file, attempts to load
+            # the I0 data from a nxmonitor dataset in the file. Give the user
+            # the option ignore the I0 data
+            if self.load_I0_from_nxmonitor():
+                reply = QMessageBox.question(self.parent, "NXmonitor data found",
+                                     "I0 data loaded from nxmonitor dataset. Do you want to use it?",
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                       QMessageBox.StandardButton.Yes)
+                if reply == QMessageBox.StandardButton.No:
+                    self.I0 = None
+
+        return True
+    
+    def load_I0_from_nxmonitor(self):
+        """
+        Load the I0 data from a nxmonitor dataset in the HDF5 file(s).
+        All files in self.fnames are expected to have a nxmonitor dataset,
+        otherwise, it returns None.
+        """
+        I0 = np.array([])
+        for fname in self.fnames:
+            with h5.File(fname, 'r') as f:
+                I0_ = get_nx_monitor(f)
+                if I0_ is None:
+                    self.I0 = None
+                    return False
+                I0 = np.append(I0, I0_) if I0.size else I0_
+        self.I0 = I0
         return True
 
     def user_E_dialog(self):

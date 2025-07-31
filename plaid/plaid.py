@@ -52,8 +52,6 @@ import plaid.resources
 #     > Add an "Export average pattern" toolbar button
 #     > Add an "Export selected pattern(s)" toolbar button
 #     > Add an "Export all patterns" toolbar button
-# - Make a more robust file loading mechanism that can handle different file formats and 
-#   structures, perhaps as a "select signal/axis" dialog for arbitrary .h5 files.
 # - handle arbitrary .h5 file drag drop
 #     > if the dropped file is recognized as a azint file, load it and add it to the file tree
 #     > if not, prompt the user to load it as auxiliary data. Future versions could allow for custom azint readers?
@@ -557,15 +555,31 @@ class MainWindow(QMainWindow):
         This method is called both when a new file is add by the 
         open_file method and when a file is reloaded, for instance
         when a file is double-clicked in the file tree.
-        If the file is already loaded, it will be reloaded.
+        If the file is alreadyl loaded, it will be reloaded.
         """
         if isinstance(file_path, str):
             file_path = [file_path]  # Ensure file_path is a list
-        self.azint_data = AzintData(self,file_path)
+        file_path = [os.path.abspath(f) for f in file_path]  # Convert to absolute paths
+        is_initial_load = item is None  # Check if this is the initial load or a reload
+        self.azint_data = AzintData(self,file_path,look_for_I0=is_initial_load)
         if not self.azint_data.load():
             QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
             return
         
+        # check if the azint_data already has I0 data from a nxmonitor dataset
+        # and if so, set the I0 data of the corresponding aux_data. The I0 data
+        # of the azint_data is overwritten in the next step, but this ensures that
+        # the I0 data conforms to the aux_data I0 format.
+        if is_initial_load and isinstance(self.azint_data.I0, np.ndarray):
+            if not file_path[0] in self.aux_data:
+                # if the file is not already in the aux_data, add it
+                self.aux_data[file_path[0]] = AuxData(self)
+            self.aux_data[file_path[0]].set_I0(self.azint_data.I0)
+            I0 = self.aux_data[file_path[0]].get_data('I0')
+            if I0 is not None:
+                self.azint_data.set_I0(I0)
+            
+
         # clear the auxiliary plot and check for I0 and auxiliary data
         self.auxiliary_plot.clear_plot()  # Clear the previous plot
         if item is not None and not isinstance(item, list): # for now, only handle a single item
@@ -633,6 +647,7 @@ class MainWindow(QMainWindow):
         self.update_all_patterns()
         self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
+
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -757,10 +772,11 @@ class MainWindow(QMainWindow):
         else:
             self.h5dialog.finished.connect(self.add_auxiliary_data)
 
-    def add_I0_data(self,is_ok):
+    def add_I0_data(self,is_ok=True):
         """Add I0 data from the h5dialog to the azint data instance."""
         if not is_ok:
             return
+
         # Assume the first selected item is the I0 data
         # ignore any other possible selections
         with h5.File(self.h5dialog.file_path, 'r') as f:
@@ -796,6 +812,7 @@ class MainWindow(QMainWindow):
         if target_name in self.azint_data.fnames:
             # if the target name is already in the azint data, update it
             self.load_file(self.azint_data.fnames[0],self.file_tree.get_aux_target_item())
+
 
     def add_auxiliary_data(self,is_ok):
         """Add auxiliary data from the h5dialog to the azint data instance."""
