@@ -24,6 +24,17 @@ colors = [
         ]
 
 class HeatmapWidget(QWidget):
+    """
+    A widget to display a heatmap of 2d data with moveable
+    horizontal lines for selecting frames.
+    It uses pyqtgraph for plotting and provides signals for interaction.
+    Signals:
+    - sigHLineMoved: Emitted when a horizontal line is moved, providing the index and new position.
+    - sigXRangeChanged: Emitted when the x-axis range is changed, providing the new range.
+    - sigHLineRemoved: Emitted when a horizontal line is removed, providing the index of the removed line.
+    - sigImageDoubleClicked: Emitted when the image is double-clicked, providing the position (x, y).
+    - sigImageHovered: Emitted when the image is hovered, providing the x and y indices of the hovered position.
+    """
     sigHLineMoved = QtCore.pyqtSignal(int,int)
     sigXRangeChanged = QtCore.pyqtSignal(object)
     #sigHLineAdded = QtCore.pyqtSignal(int)
@@ -33,7 +44,6 @@ class HeatmapWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-
 
         # Initialize variables
         self.x = None
@@ -69,15 +79,9 @@ class HeatmapWidget(QWidget):
         self.histogram.setImageItem(self.image_item)
         self.histogram.item.gradient.loadPreset('viridis')
         layout.addWidget(self.histogram,0)
-
-        # Add a horizontal line to the plot
-
-        # self.h_line = pg.InfiniteLine(angle=0, movable=True)
-        # self.h_line.sigPositionChanged.connect(self.h_line_moved)
-        # self.plot_widget.addItem(self.h_line)
         
-
         self.plot_widget.getPlotItem().mouseDoubleClickEvent = self.image_double_clicked
+
     def image_double_clicked(self, event):
         """Handle the double click event on the image item."""
         if event.button() == QtCore.Qt.MouseButton.LeftButton and self.n is not None:
@@ -122,17 +126,14 @@ class HeatmapWidget(QWidget):
         self._set_xticks(x)
 
         # update the limits of the plot
-        # self.plot_widget.setLimits(xMin=-len(x)*0.05, xMax=len(x)*1.05, yMin=-len(y)*0.05, yMax=len(y)*1.05)
-
         self.plot_widget.setLimits(xMin=-len(x)*.1, xMax=len(x)*1.1, yMin=-self.n*0.02, yMax=self.n*1.02)
-        # self.plot_widget.setLimits(xMin=-len(x)*.025, xMax=len(x)+2, yMin=-2, yMax=self.n+2)
 
         # update the horizontal lines bounds
         for h_line in self.h_lines:
             h_line.setBounds([-1, self.n])
 
     def _set_xticks(self,view=None,vrange=(None,None)):
-        """Set the x-axis ticks."""
+        """Set the x-axis ticks. Called when the x-axis range is changed."""
         if self.x is None:
             return
         x = self.x
@@ -290,11 +291,16 @@ class HeatmapWidget(QWidget):
             self.plot_widget.removeItem(h_line)
         self.h_lines = []
         self.addHLine()
-        
-        # self.plot_widget.clear()
 
 
 class PatternWidget(QWidget):
+    """
+    A widget to display patterns and vertical lines for reference patterns.
+    It uses pyqtgraph for plotting and provides signals for interaction.
+    Signals:
+    - sigXRangeChanged: Emitted when the x-axis range is changed, providing the new range.
+    - sigPatternHovered: Emitted when the mouse hovers over a pattern, providing the x and y coordinates.
+    """
     sigXRangeChanged = QtCore.pyqtSignal(object)
     sigPatternHovered = QtCore.pyqtSignal(float, float)
     def __init__(self, parent=None):
@@ -321,12 +327,9 @@ class PatternWidget(QWidget):
         self.legend = self.plot_widget.getPlotItem().addLegend()
         self.legend.addItem(self.avg_pattern_item, 'Average Pattern')
         self.legend.items[0][0].item.setVisible(False)  # Hide the average pattern by default
-        # self.legend.addItem(self.pattern_item, 'Pattern')
 
         # Create a plot item for the pattern
         self.add_pattern()
-        #self.pattern_item = pg.PlotDataItem(pen='w', name='Pattern')
-        #self.plot_widget.getPlotItem().addItem(self.pattern_item)
 
         # Add a text item to the plot for displaying hkl
         self.hkl_text_item = pg.TextItem(text='', anchor=(0.5, 0), color='w')
@@ -335,7 +338,6 @@ class PatternWidget(QWidget):
 
         self.plot_widget.sigXRangeChanged.connect(self.xrange_changed)
 
-        # self.plot_widget.getPlotItem().hoverEvent = self.hover_event
         self.plot_widget.getPlotItem().vb.hoverEvent = self.hover_event
 
         self.set_xlabel("radial axis")
@@ -362,16 +364,13 @@ class PatternWidget(QWidget):
         pen = pg.mkPen(color=color, width=1)
         pattern = pg.PlotDataItem(pen=pen, symbol='o',symbolSize=2, symbolPen=pen, symbolBrush=color, name='frame')
         self.plot_widget.getPlotItem().addItem(pattern)
-        #self.legend.addItem(pattern, 'Pattern')
         self.pattern_items.append(pattern)
 
     def remove_pattern(self, index=-1):
         """Remove a pattern item from the plot."""
         pattern = self.pattern_items.pop(index)
         self.plot_widget.getPlotItem().removeItem(pattern)
-        #self.legend.removeItem(pattern.name())
 
-    
     def set_data(self, x=None, y=None,index=-1):
         """Set the data for the pattern."""
         if x is None:
@@ -433,8 +432,6 @@ class PatternWidget(QWidget):
             scale = self.y.max()
         reference_item.setData(x, I*scale)  # Rescale the reference pattern
         
-
-
     def reference_clicked(self, item, event):
         """Handle the click event on a reference pattern."""
         x_hkls, hkls = self.reference_hkl.get(item, None)
@@ -453,24 +450,6 @@ class PatternWidget(QWidget):
         self.hkl_text_item.setText(f"({hkl})")
         self.hkl_text_item.setPos(x_hkls[idx], 0)
         self.hkl_text_item.setVisible(True)  # Show the text item
-
-
-    
-    # def _set_data(self, x=None, y=None):
-    #     """Set the data for the pattern."""
-    #     if x is None:
-    #         x = self.x
-    #     if y is None:
-    #         y = self.y
-    #     if x is None or y is None:
-    #         return
-    #     self.pattern_item.setData(x, y)
-
-    #     # update the limits of the plot
-    #     y_pad = (np.max(y) - np.min(y))*.1
-    #     self.plot_widget.setLimits(xMin=0, xMax=np.ceil(np.max(x)/10)*10, yMin=np.min(y)-y_pad, yMax=np.max(y)+y_pad)
-    #     self.x = x
-    #     self.y = y
 
     def set_avg_data(self, y_avg):
         """Set the average data for the pattern."""
@@ -529,10 +508,15 @@ class PatternWidget(QWidget):
             pattern = self.pattern_items.pop(0)
             self.plot_widget.getPlotItem().removeItem(pattern)
         self.add_pattern()  # Add a new pattern item to keep the list non-empty
-
        
 class AuxiliaryPlotWidget(QWidget):
-    """A widget to display auxiliary plots."""
+    """
+    A widget to display auxiliary plots.
+    It uses pyqtgraph for plotting and provides signals for interaction.
+    Signals:
+    - sigVLineMoved: Emitted when a vertical line is moved, providing the index and new position.
+    - sigAuxHovered: Emitted when the mouse hovers over a vertical line, providing the x and y coordinates.
+    """
     sigVLineMoved = QtCore.pyqtSignal(int, int)  # Signal emitted when a vertical line is moved
     sigAuxHovered = QtCore.pyqtSignal(float, float)  # Signal emitted when the mouse hovers over a vertical line
     def __init__(self, parent=None):
@@ -556,8 +540,6 @@ class AuxiliaryPlotWidget(QWidget):
 
         self.plot_widget.getPlotItem().vb.hoverEvent = self.hover_event
 
-
-
     def set_data(self, y, label=None,color=None):
         """Set the data for the auxiliary plot."""
         if y is None:
@@ -573,7 +555,6 @@ class AuxiliaryPlotWidget(QWidget):
             if v_line in self.plot_item.items:
                 continue
             self.plot_item.addItem(v_line)
-
 
     def addVLine(self, pos=0):
         """Add a horizontal line to the plot."""
@@ -595,7 +576,6 @@ class AuxiliaryPlotWidget(QWidget):
             return
         v_line = self.v_lines.pop(index)
         self.plot_item.removeItem(v_line)
-
 
     def v_line_moved(self, line):
         """Handle the horizontal line movement."""

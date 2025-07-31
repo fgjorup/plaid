@@ -311,6 +311,7 @@ class AzintData():
         return True
 
 class AuxData:
+    """A class to hold auxiliary data for azimuthal integration."""
     def __init__(self,parent=None):
         self._parent = parent
         self.I0 = None

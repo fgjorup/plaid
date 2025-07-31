@@ -12,7 +12,7 @@ import numpy as np
 import Dans_Diffraction as dans
 
 def validate_cif(cif_file):
-    """Validate the CIF file."""
+    """Validate the CIF file. Returns True if valid"""
     return dans.functions_crystallography.cif_check(dans.functions_crystallography.readcif(cif_file))
 
 class Reference():

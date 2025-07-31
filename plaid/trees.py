@@ -26,6 +26,18 @@ colors = [
         ]
 
 class FileTreeWidget(QWidget):
+    """
+    A widget to display a tree of files with their shapes.
+    It allows adding files, requesting auxiliary data, and grouping items.
+    Signals:
+    - sigItemDoubleClicked: Emitted when an item is double-clicked, providing the
+        file path and the item itself.
+    - sigGroupDoubleClicked: Emitted when a group of items is double-clicked,
+        providing the list of file paths and the list of items in the group.
+    - sigItemRemoved: Emitted when an item is removed, providing the file path.
+    - sigI0DataRequested: Emitted when I0 data is requested for an item, providing the file path.
+    - sigAuxiliaryDataRequested: Emitted when auxiliary data is requested for an item, providing the file path.
+    """
     sigItemDoubleClicked = QtCore.pyqtSignal(str,object)
     sigGroupDoubleClicked = QtCore.pyqtSignal(list,list)
     sigItemRemoved = QtCore.pyqtSignal(str)
@@ -39,7 +51,6 @@ class FileTreeWidget(QWidget):
         # Create a layout
         layout = QVBoxLayout(self)
         # Create a file tree view
-        #self.file_tree = pg.TreeWidget()
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(['File name', 'Shape'])
         self.file_tree.setSortingEnabled(False)
@@ -51,12 +62,10 @@ class FileTreeWidget(QWidget):
         self.file_tree.setSelectionMode(QTreeWidget().SelectionMode.ExtendedSelection)
         layout.addWidget(self.file_tree)
 
-        #self.setAcceptDrops(True)
 
     def add_file(self, file_path,shape):
         """Add a file to the tree widget."""
         file_path = os.path.abspath(file_path)
-
         # check if the file is already in self.files
         if file_path in self.files:
             # If the file is already in the list, update its shape
@@ -69,7 +78,6 @@ class FileTreeWidget(QWidget):
         self.files.append(file_path)
         # get the file name
         file_name = os.path.basename(file_path).replace('_pilatus_integrated.h5', '')
-        
         # Create a new tree item for the file
         item = QTreeWidgetItem([file_name, shape.__str__()])
         item.setToolTip(0, file_path)  # Set the tooltip to the full file path
@@ -277,6 +285,14 @@ class FileTreeWidget(QWidget):
         return menu
 
 class CIFTreeWidget(QWidget):
+    """
+    A widget to display a tree of CIF files.
+    It allows adding CIF files, checking items, and double-clicking items.
+    Signals:
+    - sigItemAdded: Emitted when a CIF file is added, providing the file path.
+    - sigItemChecked: Emitted when an item is checked or unchecked, providing the index and checked state.
+    - sigItemDoubleClicked: Emitted when an item is double-clicked, providing the index and file name.
+    """
     sigItemAdded = QtCore.pyqtSignal(str)
     sigItemChecked = QtCore.pyqtSignal(int, bool)
     sigItemDoubleClicked = QtCore.pyqtSignal(int, str)
@@ -322,10 +338,12 @@ class CIFTreeWidget(QWidget):
         self.sigItemAdded.emit(file_path)
 
     def dragEnterEvent(self, event):
+        """Handle drag enter event."""
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
     
     def dropEvent(self, event):
+        """Handle drop event."""
         if event.mimeData().hasUrls():
             for url in event.mimeData().urls():
                 file_path = url.toLocalFile()
@@ -347,7 +365,6 @@ class CIFTreeWidget(QWidget):
         if index == -1:
             return
         self.sigItemDoubleClicked.emit(index,item.text(0))
-
 
 
 if __name__ == "__main__":
