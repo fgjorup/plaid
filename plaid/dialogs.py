@@ -8,18 +8,49 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides dialogs classes to select and manage HDF5 files and their content.
 
 """
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QDialog, QPushButton, QLineEdit, QCheckBox, QRadioButton, QButtonGroup, QSpinBox, QLabel, QApplication, QGroupBox
+from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QDialog,
+                             QPushButton, QLineEdit, QCheckBox, QRadioButton, QButtonGroup, 
+                             QSpinBox, QLabel, QGroupBox)
 from PyQt6.QtGui import QRegularExpressionValidator
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
 
 class H5Dialog(QDialog):
-    """A dialog to select the content of an HDF5 file."""
-    def __init__(self, parent=None, file_path=None):
+    """
+    A custom dialog to select the content of an HDF5 file, using a tree view
+    for browsing the file structure and a second tree for selected items.
+    The dialog allows users to double-click items to select them, edit aliases,
+    and remove them from the selection.  
+
+    Use H5Dialog(file_path) to create an instance of the dialog.
+    The dialog will populate the file tree with the content of the HDF5 file.  
+    
+    Use open() to display the dialog as a modal dialog. The selected items are 
+    stored in self.selected_items as a list of tuples (alias, path, shape) when 
+    the dialog is accepted. If the dialog is rejected, self.selected_items will 
+    be None.  
+
+    Use the `finished` signal to connect to a slot that handles the 
+    selected items and call `get_selected_items()` to retrieve a list of tuples
+    (alias, path, shape) for the selected items, where alias is the user-editable
+    name for the item, path is the full path to the item in the HDF5 file, and 
+    shape is the shape of the item as a string.
+    If no items are selected, `get_selected_items()` will return None.
+
+    The dialog supports different modes:
+    - 'any': Allows selection of any dataset, including 1D, 2D, and higher-dimensional datasets.
+    - '1d': Only allows selection of 1D datasets.
+    - '2d': Only allows selection of 2D datasets.
+    - '1d_2d_pair': Allows selection of one 1D dataset and one 2D dataset.
+    The mode can be set using the `open_1d()`, `open_2d()`, `open_1d_2d_pair()`, or `open()` methods.
+
+    """
+    def __init__(self, parent=None, file_path=None, mode='any'):
         super().__init__(parent)
         self.selected_items = None
         self.file_path = file_path
+        self.mode = mode
         self.setWindowTitle("Select HDF5 Content")
         self.setLayout(QVBoxLayout())
         
@@ -66,12 +97,39 @@ class H5Dialog(QDialog):
 
         self.resize(350, 500)  # Set a default size for the dialog
 
-
-
     def item_double_clicked(self, item, column):
-        """Handle item double click event."""
-        # if the item is a 1D dataset, add it to the selected tree
-        if item.childCount() == 0 and item.text(1) != "" and len(item.text(1).split('×')) == 1:
+        """
+        Handle item double click event.
+        Adds datasets to the selected tree if they match the selection mode.
+        Prevents duplicates.
+        Modes:
+        - 'any': Allows any dataset.
+        - '1d': Only allows 1D datasets.
+        - '2d': Only allows 2D datasets.
+        - '1d_2d_pair': Allows one 1D dataset and one 2D dataset.
+        """
+        # determine if the item is a dataset or a group
+        if item.childCount() == 0 and item.text(1) != "":
+            if self.mode == '1d' and not self._get_item_dim(item) == 1:
+                # If only 1D datasets are allowed, skip items with more than one dimension
+                return
+            elif self.mode == '2d' and not self._get_item_dim(item) == 2:
+                # If only 2D datasets are allowed, skip items with more than two dimensions
+                return
+            elif self.mode == '1d_2d_pair':
+                if not self._get_item_dim(item) == 1 and not self._get_item_dim(item) == 2:
+                    # If only 1D and 2D datasets are allowed, skip items with more than two dimensions
+                    return
+                # If 1D_2D pair mode is active, make sure there is only one 1D dataset and one 2D dataset
+                # by removing any existing items with the same dimension as the clicked item
+                for i in range(self.selected_tree.topLevelItemCount()):
+                    selected_item = self.selected_tree.topLevelItem(i)
+                    if self._get_item_dim(selected_item) == self._get_item_dim(item):
+                        self.selected_tree.takeTopLevelItem(i)
+                        break
+            elif self.mode == 'any':
+                # If any dataset is allowed, proceed
+                pass
             alias, shape = item.text(0) , item.text(1)
             if alias == "data" or alias == "value":
                 alias = item.parent().text(0)  # Use the parent name as alias if it's a data or value item
@@ -87,28 +145,36 @@ class H5Dialog(QDialog):
             selected_item = QTreeWidgetItem([alias, full_path, shape])
             self.selected_tree.addTopLevelItem(selected_item)
             # Enable the accept button if there are items in the selected tree
-            if self.selected_tree.topLevelItemCount() > 0:
+            if self.mode == '1d_2d_pair':
+                self.accept_button.setToolTip("Select one 1D dataset and one 2D dataset")
+                if self.selected_tree.topLevelItemCount() == 2:
+                    # If in 1D_2D pair mode, enable the accept button only if there are exactly two items
+                    self.accept_button.setEnabled(True)
+            elif self.selected_tree.topLevelItemCount() > 0 and self.mode != '1d_2d_pair':
                 self.accept_button.setEnabled(True)
 
     def edit_alias(self, item,column):
-        """Edit the alias of the selected item."""
-        #if column != 0:  # Only allow editing the alias column
-        #    return
+        """
+        Edit the alias of the selected item.  
+        Called when an item in the selected tree is double-clicked.
+        The alias is the first column of the selected tree.
+        The item is made editable, and the user can change the alias."""
         item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)  # Make the item editable
         self.selected_tree.editItem(item, 0)
         item.setFlags(item.flags() & ~QtCore.Qt.ItemFlag.ItemIsEditable)  # Make the item non-editable again
 
-            
-        
-        #print(f"Item double clicked: {item.text(0)}")
-        #index = self.file_tree.indexOfTopLevelItem(item)
-        #if index == -1:
-        #    return
-        # Emit the signal with the selected item
-        # self.accept()
-        # self.selected_item = item.text(0)
-        # self.selected_shape = item.text(1)
-        # self.close()
+    def get_file_path(self):
+        """Get the file path of the HDF5 file."""
+        return self.file_path
+
+    def get_selected_items(self):
+        """
+        Get the selected items from the dialog.
+        Return a list of tuples (alias, path, shape) for the selected items
+        or None if no items are selected.
+        If the dialog is accepted, the selected items are stored in self.selected_items.
+        """
+        return self.selected_items
 
     def keyPressEventHandler(self, event):
         """Handle key press events."""
@@ -136,7 +202,13 @@ class H5Dialog(QDialog):
                         self.accept_button.setEnabled(False)
 
     def selection_finished(self):
-        """Handle the selection finished event."""
+        """
+        Handle the selection finished event.  
+        Populate the selected_items attribute with the selected items
+        (alias, path, shape) from the selected tree.
+        This method is called when the accept button is clicked.
+        emits the `finished` signal (inherited from QDialog).
+        """
         # Emit the signal with the selected items
         selected_items = []
         for i in range(self.selected_tree.topLevelItemCount()):
@@ -149,7 +221,10 @@ class H5Dialog(QDialog):
         self.accept()
 
     def _populate_tree(self, file_path):
-        """Populate the tree with the content of the HDF5 file."""
+        """
+        Populate the tree with the content of the HDF5 file as a tree structure
+        with two columns: the item name and its shape.
+        """
         with h5.File(file_path, 'r') as f:
             for key in f.keys():
                 shape = f[key].shape if hasattr(f[key], 'shape') and len(f[key].shape) else ""
@@ -161,7 +236,14 @@ class H5Dialog(QDialog):
                     # item.setForeground(0, pg.mkColor("#AAAAAA"))
 
     def _populate_item(self, parent_item, group):
-        """Recursively populate the tree with the content of a group."""
+        """
+        Recursively populate the tree with the content of a group.
+        Each item is represented by a QTreeWidgetItem with two columns:
+        the item name and its shape.
+        If the item has no shape and no children with a shape, it is set to a lighter color.
+        If the item throws a KeyError (e.g. dead links), it is set to a red color.
+        Returns True if any child has a shape, otherwise False.
+        """
         has_child_with_shape = False
         for key in group.keys():
             try:
@@ -196,6 +278,16 @@ class H5Dialog(QDialog):
             path = parent.text(0) + '/' + path
             parent = parent.parent()
         return path
+    
+    def _get_item_dim(self, item):
+        """Get the dimension of the item."""
+        if item.childCount() == 0:
+            # If the item is a dataset, return its shape
+            shape = item.text(item.columnCount() - 1)
+            if shape:
+                return len(shape.split('×'))
+            else:
+                return 0
 
     def _resize_first_section(self):
         """Resize the first section of the tree header to span the available width."""
@@ -218,12 +310,38 @@ class H5Dialog(QDialog):
             return ' × '.join([str(s) for s in shape])
         return str(shape)
     
+    def open(self):
+        """Open the dialog as a modal dialog."""
+        self.mode = 'any'
+        self.setWindowTitle("Select HDF5 Content")
+        super().open()
+
+    def open_1d(self):
+        """Open the dialog as a modal dialog only permitting 1D datasets."""
+        self.mode = '1d'
+        # set the window title to indicate that only 1D datasets are allowed
+        self.setWindowTitle("Select 1D HDF5 Content")
+        super().open()
+    
+    def open_2d(self):
+        """Open the dialog as a modal dialog only permitting 2D datasets."""
+        self.mode = '2d'
+        # set the window title to indicate that only 2D datasets are allowed
+        self.setWindowTitle("Select 2D HDF5 Content")
+        super().open()
+
+    def exec_1d_2d_pair(self):
+        """Open the dialog as a modal dialog specifically for one 1d dataset and one 2d dataset."""
+        self.mode = '1d_2d_pair'
+        # set the window title to indicate that only 1D datasets are allowed
+        self.setWindowTitle("Select 1D and 2D HDF5 Content")
+        return super().exec() == 1 
+
     # make a regular expression for valid file extensions
 
 
 class ExportSettingsDialog(QDialog):
-    """A dialog to set export settings."""
-
+    """A dialog to set export settings for exporting patterns from plaid."""
     sigSaveAsDefault = QtCore.pyqtSignal(dict)
 
     def __init__(self, parent=None):
@@ -241,7 +359,6 @@ class ExportSettingsDialog(QDialog):
         self._fileformat()  # Add file format settings
         self._dataformat()  # Add data format settings
         
-
         # get the default settings in case it is necessary to revert
         self._default_settings = self.get_settings()
         # get the current settings in case the user rejects the dialog
@@ -270,6 +387,7 @@ class ExportSettingsDialog(QDialog):
         layout.addWidget(self.cancel_button)
 
     def _filename(self):
+        """Add a group box for file name settings."""
         # Add a group box for file name settings
         group = QGroupBox("File Name Settings")
         self.layout().addWidget(group)
@@ -309,6 +427,7 @@ class ExportSettingsDialog(QDialog):
 
 
     def _fileformat(self):
+        """Add a group box for file format settings."""
         # Add a group box for file format settings
         group = QGroupBox("File Format Settings")
         self.layout().addWidget(group)
@@ -340,6 +459,7 @@ class ExportSettingsDialog(QDialog):
         group_layout.addWidget(self.tab_radio)
 
     def _dataformat(self):
+        """Add a group box for data format settings."""
         # Add a group box for data format settings
         group = QGroupBox("Data Format Settings")
         self.layout().addWidget(group)
@@ -441,26 +561,5 @@ class ExportSettingsDialog(QDialog):
         super().reject()
 
 
-        
-
 if __name__ == "__main__":
     pass
-    # import sys
-    # app = QApplication(sys.argv)
-    # dialog = ExportSettingsDialog()
-
-    # settings = {
-    #     'extension_edit': 'xye',
-    #     'leading_zeros_spinbox': 8,
-    #     'header_checkbox': False,
-    #     'scientific_checkbox': True,
-    #     'space_radio': True,
-    #     'tab_radio': False,
-    #     'I0_checkbox': True,
-    #     'tth_radio': False,
-    #     'Q_radio': True
-    # }
-    # dialog.set_settings(settings)
-    # dialog.exec()
-    # dialog.print_settings()
-    #sys.exit(app.exec())
