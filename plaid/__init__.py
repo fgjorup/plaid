@@ -1,4 +1,4 @@
-__version__ = '0.0.4'
+__version__ = '0.0.5'
 __author__ = 'Frederik H Gjørup'
 __authors__ = ['Frederik H. Gjørup']
 __email__ = 'fgjorup@chem.au.dk'
