@@ -95,8 +95,8 @@ def save_recent_files_settings(recent_files):
     settings.beginGroup("MainWindow")
     # Read the existing recent files
     existing_files = settings.value("recent-files", [], type=list)
-    # Remove duplicates and empty entries
-    recent_files = list(set(recent_files + existing_files))
+    # Remove duplicates while preserving order
+    recent_files = list(dict.fromkeys(recent_files[::-1] + existing_files))
     recent_files = [f for f in recent_files if f]  # Remove empty entries
     # Limit to the last 10 files
     if len(recent_files) > 10:
@@ -131,7 +131,7 @@ def save_recent_refs_settings(recent_refs):
     # Read the existing recent references
     existing_refs = settings.value("recent-references", [], type=list)
     # Remove duplicates and empty entries
-    recent_refs = list(set(recent_refs + existing_refs))
+    recent_refs = list(dict.fromkeys(recent_refs[::-1] + existing_refs))
     recent_refs = [r for r in recent_refs if r]  # Remove empty entries
     # Limit to the last 10 references
     if len(recent_refs) > 10:
@@ -484,12 +484,16 @@ class MainWindow(QMainWindow):
         """Update the geometry of the pattern widget to match the heatmap."""
         self.pattern.plot_widget.setFixedWidth(self.heatmap.plot_widget.width())
 
-    def _update_status_bar(self, x_idx, y_idx):
+    def _update_status_bar(self, pos):
         """
         Update the status bar with the current position in the heatmap
         by passing the x and y indices to the update_status_bar method.
         This method is called when the user hovers over the heatmap.
         """
+        if pos is None:
+            self.update_status_bar(None)
+            return
+        x_idx, y_idx = pos
         if self.azint_data.x is None:
             return
         if self.is_Q:
@@ -498,13 +502,17 @@ class MainWindow(QMainWindow):
             x_value = self.azint_data.get_tth()[x_idx]
         #y_value = self.azint_data.I[y_idx, x_idx] if self.azint_data.I is not None else 0
         y_value = self.azint_data.get_I(index=y_idx)[x_idx] if self.azint_data.I is not None else 0
-        self.update_status_bar(x_value, y_value)
+        self.update_status_bar((x_value, y_value))
 
-    def update_status_bar(self, x_value, y_value):
+    def update_status_bar(self, pos):
         """
         Update the status bar with the current cursor position for the heatmap
         and pattern plots. Includes both Q and d-spacing if the energy is available.
         """
+        if pos is None:
+            self.statusBar().showMessage(self.azint_data.get_info_string())
+            return
+        x_value, y_value = pos
         if self.azint_data.x is None:
             return
         if self.is_Q:
@@ -517,8 +525,12 @@ class MainWindow(QMainWindow):
         status_text = f"2θ: {tth:6.2f}, Q: {Q:6.3f}, d: {d:6.3f}, Intensity: {y_value:7.1f}"
         self.statusBar().showMessage(status_text)
 
-    def update_status_bar_aux(self, x_value, y_value):
+    def update_status_bar_aux(self, pos):
         """Update the status bar with the auxiliary plot position."""
+        if pos is None:
+            self.statusBar().showMessage(self.azint_data.get_info_string())
+            return
+        x_value, y_value = pos
         # determine which string formatting to use based on the values
         status_text = f"X: {x_value:7.1f}, "   
         if np.abs(y_value) < 1e-3 or np.abs(y_value) >= 1e4:
@@ -528,7 +540,7 @@ class MainWindow(QMainWindow):
             # use normal float formatting for other values
             status_text += f"Y: {y_value:7.3f}"
         self.statusBar().showMessage(status_text)
-
+        
     def open_file(self,file_path=None):
         """
         Open the optional provided file path or a file dialog to select an azimuthal 
@@ -547,7 +559,15 @@ class MainWindow(QMainWindow):
         shape  = self.azint_data.shape
         if shape is not None:
             # add the file to the file tree
-            self.file_tree.add_file(file_path,shape)
+            item = self.file_tree.add_file(file_path,shape)
+
+            self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
+
+            # # if the file was loaded with I0 data (nxmonitor), set the status tip
+            # # of the file tree item to indicate that it has I0 data
+            # if self.azint_data.I0 is not None:
+            #     # if the azint_data has I0 data, add it to the file tree item
+            #     self.file_tree.set_target_item_status_tip("I0 corrected", item)
         
     def load_file(self, file_path, item=None):
         """
@@ -560,9 +580,11 @@ class MainWindow(QMainWindow):
         if isinstance(file_path, str):
             file_path = [file_path]  # Ensure file_path is a list
         file_path = [os.path.abspath(f) for f in file_path]  # Convert to absolute paths
-        is_initial_load = item is None  # Check if this is the initial load or a reload
-        self.azint_data = AzintData(self,file_path,look_for_I0=is_initial_load)
-        if not self.azint_data.load():
+        # Check if this is the initial load or a reload, i.e. is the method called
+        # with an item from the file tree
+        is_initial_load = item is None  
+        self.azint_data = AzintData(self,file_path)
+        if not self.azint_data.load(look_for_I0=is_initial_load):
             QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
             return
         
@@ -633,8 +655,7 @@ class MainWindow(QMainWindow):
         self.toggle_q_action.setChecked(is_q)
         if self.azint_data.E is not None:
             self.E = self.azint_data.E
-    
-
+        
         # Update the heatmap with the new data
         self.heatmap.set_data(x, I.T)
         # self.heatmap.set_data(x_edge, y_edge, I)
@@ -647,7 +668,6 @@ class MainWindow(QMainWindow):
         self.update_all_patterns()
         self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
-
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -697,6 +717,8 @@ class MainWindow(QMainWindow):
             Qmax = self.getQmax()
         self.ref = Reference(cif_file,E=self.E, Qmax=Qmax)
         self.plot_reference()
+        tooltip = f"{self.ref.get_spacegroup_info()}\n{self.ref.get_cell_parameter_info()}"
+        self.cif_tree.set_latest_item_tooltip(tooltip)
 
     def plot_reference(self, Qmax=None, dmin=None):
         """Plot the reference pattern in the pattern plot."""
@@ -807,12 +829,14 @@ class MainWindow(QMainWindow):
         # azint data is cleared
         self.aux_data[target_name].set_I0(I0)
 
+        # update the file tree item status tip
+        self.file_tree.set_target_item_status_tip("I0 corrected")
+
         # if the I0 was added to the current azint data,
         # update the azint data instance
         if target_name in self.azint_data.fnames:
             # if the target name is already in the azint data, update it
             self.load_file(self.azint_data.fnames[0],self.file_tree.get_aux_target_item())
-
 
     def add_auxiliary_data(self,is_ok):
         """Add auxiliary data from the h5dialog to the azint data instance."""

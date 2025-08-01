@@ -22,12 +22,12 @@ class Reference():
         self.E = E  # Energy in keV
         self.Qmax = Qmax  # Maximum Q value in 1/A
         max_twotheta = np.degrees(2 * np.arcsin((Qmax*(12.398/E))/(4*np.pi)))  # Calculate max 2theta from Qmax and energy
-        xtl = dans.Crystal(cif_file)
-        xtl.Scatter.setup_scatter(max_twotheta=max_twotheta,energy_kev=E,
+        self.xtl = dans.Crystal(cif_file)
+        self.xtl.Scatter.setup_scatter(max_twotheta=max_twotheta,energy_kev=E,
                                  scattering_type='xray',output=False)
 
-        d, I, reflections = xtl.Scatter.powder(scattering_type='xray',
-                                       units='dspace', 
+        d, I, reflections = self.xtl.Scatter.powder(scattering_type='xray',
+                                       units='dspace',
                                        powder_average=True, 
                                        min_overlap=0.02, 
                                        energy_kev=E,)
@@ -45,6 +45,16 @@ class Reference():
             dmin = 2*np.pi/Qmax
         mask = self.d >= dmin
         return self.hkl[mask], self.d[mask], self.I[mask]
+    
+    def get_spacegroup_info(self):
+        """Get the space group of the crystal as a string."""
+        sg = self.xtl.Symmetry.spacegroup
+        n = int(self.xtl.Symmetry.spacegroup_number)
+        return f"{sg.replace(' ', '')} #{n}"
+    
+    def get_cell_parameter_info(self):
+        """Get the cell parameters of the crystal as a string."""
+        return "a, b, c: {0} {1} {2}\nα, β, γ: {3} {4} {5}".format(*self.xtl.Cell.lp())
 
 
 

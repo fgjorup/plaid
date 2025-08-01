@@ -61,10 +61,11 @@ class FileTreeWidget(QWidget):
         self.file_tree.customContextMenuRequested.connect(self.customMenuEvent)
         self.file_tree.setSelectionMode(QTreeWidget().SelectionMode.ExtendedSelection)
         layout.addWidget(self.file_tree)
+        self.file_tree.setMouseTracking(True)
 
 
     def add_file(self, file_path,shape):
-        """Add a file to the tree widget."""
+        """Add a file to the tree widget. Returns the created item."""
         file_path = os.path.abspath(file_path)
         # check if the file is already in self.files
         if file_path in self.files:
@@ -84,6 +85,7 @@ class FileTreeWidget(QWidget):
         self.file_tree.addTopLevelItem(item)
         # Optionally, you can expand the item
         item.setExpanded(True)
+        return item  # Return the created item for further use
 
     def add_auxiliary_item(self, alias,shape):
         """Add an auxiliary child item to the target toplevel item"""
@@ -173,6 +175,16 @@ class FileTreeWidget(QWidget):
         self.file_tree.takeTopLevelItem(index)
         # emit a signal if needed
         self.sigItemRemoved.emit(file)
+
+    def set_target_item_status_tip(self, status_tip, item=None):
+        """Set the status tip for the target item."""
+        if item is None:
+            item = self.get_aux_target_item()
+        if item is None:
+            return
+        # set the status tip for the item for both columns
+        item.setStatusTip(0, status_tip)
+        item.setStatusTip(1, status_tip)
 
     def request_I0_data(self, item):
         """Request I0 data for the selected item."""
@@ -366,6 +378,13 @@ class CIFTreeWidget(QWidget):
             return
         self.sigItemDoubleClicked.emit(index,item.text(0))
 
+    def set_latest_item_tooltip(self, tooltip):
+        """Set the tooltip for the latest added item."""
+        if not self.files:
+            return
+        item = self.file_tree.topLevelItem(len(self.files) - 1)
+        if item is not None:
+            item.setToolTip(0, tooltip)
 
 if __name__ == "__main__":
     pass

@@ -12,7 +12,8 @@ including loading data from HDF5 files, converting between q and 2theta, and nor
 import numpy as np
 from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
-from plaid.nexus import get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy, get_nx_monitor
+from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_axes, get_nx_energy, 
+                         get_nx_monitor, get_instrument_name, get_source_name)
 from plaid.misc import q_to_tth, tth_to_q
 from plaid.dialogs import H5Dialog
 
@@ -23,7 +24,6 @@ class AzintData():
     Parameters:
     - parent: The parent widget, usually the main window.
     - fnames: A list of file names to load the azimuthal integration data from.
-    - look_for_I0: If True, attempts to load I0 data from a nxmonitor dataset in the file(s).
     Attributes:
     - x: The radial axis data (2theta or q).
     - I: The intensity data.
@@ -32,10 +32,11 @@ class AzintData():
     - E: The energy data, if available.
     - I0: The I0 data, if available.
     - shape: The shape of the intensity data.
-    - look_for_I0: A boolean indicating if the class should look for I0 data in the file(s).
+    - instrument_name: The name of the instrument, if available.
+    - source_name: The name of the source, if available.
     """
 
-    def __init__(self, parent=None,fnames=None, look_for_I0=True):
+    def __init__(self, parent=None,fnames=None):
         self.parent = parent
         if isinstance(fnames, str):
             fnames = [fnames]
@@ -47,15 +48,21 @@ class AzintData():
         self.E = None
         self.I0 = None
         self.shape = None  # Shape of the intensity data
-        self.look_for_I0 = look_for_I0
+        self.instrument_name = None  # Name of the instrument, if available
+        self.source_name = None  # Name of the source, if available
         self._load_func = None
+
         #self.aux_data = {} # {alias: np.array}
 
-    def load(self):
+    def load(self, look_for_I0=True):
         """
         Determine the file type and load the data with the appropriate function.
         The load function should take a file name as input and return the x, I, is_q, and E values.
         If the energy is not available in the file, the load function should return None for E.
+        Parameters:
+        - look_for_I0: If True, attempts to load I0 data from a nxmonitor dataset in the file(s).
+        Returns:
+        - True if the data was loaded successfully, False otherwise.
         """
 
         if not all(fname.endswith('.h5') for fname in self.fnames):
@@ -84,7 +91,7 @@ class AzintData():
         self.y_avg = I.mean(axis=0)
         self.shape = I.shape
  
-        if self.look_for_I0 and self._load_func == self._load_azint:
+        if look_for_I0 and self._load_func == self._load_azint:
             # If the data is loaded from a nxazint file, attempts to load
             # the I0 data from a nxmonitor dataset in the file. Give the user
             # the option ignore the I0 data
@@ -107,7 +114,11 @@ class AzintData():
         I0 = np.array([])
         for fname in self.fnames:
             with h5.File(fname, 'r') as f:
-                I0_ = get_nx_monitor(f)
+                monitor = get_nx_monitor(f)
+                if monitor is None or 'data' not in monitor:
+                    I0_ = None
+                else:
+                    I0_ = monitor['data'][:]
                 if I0_ is None:
                     self.I0 = None
                     return False
@@ -252,6 +263,25 @@ class AzintData():
         
         self._export_xy(fname,x,y, kwargs)
         return True
+    
+    def get_info_string(self):
+        """Get the instrument (and source) name from the azimuthal integration data."""
+        name = ""
+        if self.instrument_name is not None:
+            name += self.instrument_name
+        if self.source_name is not None:
+            if name:
+                name += " - "
+            name += self.source_name
+        if self.E is not None:
+            if name:
+                name += " - "
+            name += f"energy: {self.E:.2f} keV"
+        if self.I0 is not None:
+            if name:
+                name += " - "
+            name += f"I0 corrected"
+        return name
 
     def _determine_load_func(self, fname):
         """Determine the appropriate load function based on the file structure."""
@@ -284,6 +314,10 @@ class AzintData():
             is_Q = 'q' in axis.attrs['long_name'].lower() if 'long_name' in axis.attrs else False
             I = signal[:]
             E = get_nx_energy(f)
+
+            # get the instrument and source names if available
+            self.instrument_name = get_instrument_name(f)
+            self.source_name = get_source_name(f)
             return x, I, is_Q, E 
         # with h5.File(fname, 'r') as f:
         #     data_group = f['entry/data']

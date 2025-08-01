@@ -10,14 +10,53 @@ This module provides functions to interact with NeXus HDF5 files
 """
 import h5py as h5
 
+def get_nx_group(gr, name, nxclass=None):
+    """Get a generic nexus group with a specific name or nxclass from a group."""
+    if gr is None:
+        return None
+    if name in gr:
+        return gr[name]
+    if nxclass is not None:
+        for key in gr.keys():
+            if "NX_class" in gr[key].attrs and gr[key].attrs["NX_class"] == nxclass:
+                return gr[key]
+
 def get_nx_entry(f):
     """Get the entry nexus group from a nexus hdf5 instance."""
-    if 'entry' in f:
-        return f['entry']
-    elif 'NXentry' in f:
-        return f['NXentry']
-    else:
+    if isinstance(f, h5.Group):
+        # If f is already a group, check if it is an entry
+        if 'NX_class' in f.attrs and f.attrs['NX_class'] == 'NXentry':
+            return f
+        # If f is a group, but not an entry, get the file from the group
+        # to start from the root
+        else:
+            f = f.file  # Get the file from the group
+    return get_nx_group(f, 'entry', 'NXentry')
+
+def get_nx_monitor(gr):
+    """Get the monitor nexus group from a nexus hdf5 file."""
+    gr = get_nx_entry(gr)
+    return get_nx_group(gr, 'monitor', 'NXmonitor')
+
+def get_nx_instrument(gr):
+    """Get the instrument nexus group from a nexus hdf5 file."""
+    if gr is None:
         return None
+    # check if the group is already an instrument
+    if 'NX_class' in gr.attrs and gr.attrs['NX_class'] == 'NXinstrument':
+        return gr
+    gr = get_nx_entry(gr)
+    return get_nx_group(gr, 'instrument', 'NXinstrument')
+
+def get_nx_monochromator(gr):
+    """Get the nxmonochromator group from a nexus hdf5 file."""
+    gr = get_nx_instrument(gr)
+    return get_nx_group(gr, 'monochromator', 'NXmonochromator')
+
+def get_nx_source(gr):
+    """Get the source nexus group from a nexus hdf5 file."""
+    gr = get_nx_instrument(gr)
+    return get_nx_group(gr, 'source', 'NXsource')
 
 def get_nx_default(f):
     """Get the default nexus group from a nexus hdf5 instance."""
@@ -74,41 +113,42 @@ def get_nx_energy(f):
 # If no energy or wavelength is found, return None
     return None    
 
-def get_nx_monitor(f):
-    """Get the data from a monitor nexus dset from a nexus hdf5 file."""
-    entry = get_nx_entry(f)
-    if entry is None:
-        return None
-    monitor = get_nx_group(entry, 'monitor', 'NXmonitor')
-    if monitor is None:
-        return None
-    if 'data' in monitor:
-        return monitor['data'][:]
+def get_instrument_name(gr):
+    """Get the instrument name from a nexus file and return it as a string."""
+    instrument = get_nx_instrument(gr)
+    if instrument is not None and 'name' in instrument:
+        name =  instrument['name'][()]
+        # Check if the name is a bytes object and decode it
+        if isinstance(name, bytes):
+            return name.decode('utf-8')
+        return name
+    return None
 
-def get_nx_group(gr, name, nxclass=None):
-    """Get a generic nexus group with a specific name or nxclass from a group."""
-    if gr is None:
-        return None
-    if name in gr:
-        return gr[name]
-    if nxclass is not None:
-        for key in gr.keys():
-            if "NX_class" in gr[key].attrs and gr[key].attrs["NX_class"] == nxclass:
-                return gr[key]
-
-def get_nx_instrument(gr):
-    """Get the instrument nexus group from a nexus hdf5 file."""
-    return get_nx_group(gr, 'instrument', 'NXinstrument')
-
-def get_nx_monochromator(gr):
-    """Get the nxmonochromator group from a nexus hdf5 file."""
-    if gr is None:
-        return None
-    if 'NX_class' in gr.attrs and not gr.attrs['NX_class'] == 'NXinstrument':
-        # If the group is not an instrument, try to get the instrument group
-        gr = get_nx_instrument(gr)
-    return get_nx_group(gr, 'monochromator', 'NXmonochromator')
-
+def get_source_name(gr):
+    """Get the source name from a nexus file and return it as a string."""
+    source = get_nx_source(gr)
+    if source is not None and 'name' in source:
+        name = source['name'][()]
+        # Check if the name is a bytes object and decode it
+        if isinstance(name, bytes):
+            return name.decode('utf-8')
+        return name
+    return None
 
 if __name__ == "__main__":
-    pass
+    fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\scan-0101_pilatus_integrated.h5"
+
+    with h5.File(fname, 'r') as f:
+        entry = get_nx_entry(f)
+        instrument = get_nx_instrument(entry)
+        monochromator = get_nx_monochromator(entry)
+        source = get_nx_source(entry)
+        monitor = get_nx_monitor(entry)
+        print(get_instrument_name(f))
+        print(get_source_name(f))
+
+        print(get_nx_entry(f) == get_nx_entry(entry))
+        print(get_nx_instrument(f) == get_nx_instrument(entry))
+        print(get_nx_monochromator(f) == get_nx_monochromator(entry))
+        print(get_nx_source(f) == get_nx_source(entry))
+        print(get_nx_monitor(f) == get_nx_monitor(entry))

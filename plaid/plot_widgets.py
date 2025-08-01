@@ -40,7 +40,7 @@ class HeatmapWidget(QWidget):
     #sigHLineAdded = QtCore.pyqtSignal(int)
     sigHLineRemoved = QtCore.pyqtSignal(int)
     sigImageDoubleClicked = QtCore.pyqtSignal(object)
-    sigImageHovered = QtCore.pyqtSignal(int,int)
+    sigImageHovered = QtCore.pyqtSignal(object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -272,15 +272,11 @@ class HeatmapWidget(QWidget):
             x_idx = int(np.clip(pos.x(), 0, self.x.size-1))  # Ensure x is within bounds
             y_idx = int(np.clip(pos.y(), 0, self.n-1))  # Ensure y is within bounds
             # Emit the signal with the x and y indices
-            self.sigImageHovered.emit(x_idx, y_idx)
+            self.sigImageHovered.emit((x_idx, y_idx))
 
         else:
-            # If the mouse is exiting, you can clear any hover-related information
-            #print("Mouse exited the image item.")
-            # Optionally, you can hide any hover-related UI elements here
-            # For example, if you had a tooltip or a label showing the position,
-            # you could hide it here.
-            pass
+            # emit None to indicate the mouse is no longer hovering
+            self.sigImageHovered.emit(None)
 
     def clear(self):
         """Clear the heatmap data and horizontal lines."""
@@ -302,7 +298,7 @@ class PatternWidget(QWidget):
     - sigPatternHovered: Emitted when the mouse hovers over a pattern, providing the x and y coordinates.
     """
     sigXRangeChanged = QtCore.pyqtSignal(object)
-    sigPatternHovered = QtCore.pyqtSignal(float, float)
+    sigPatternHovered = QtCore.pyqtSignal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -494,13 +490,10 @@ class PatternWidget(QWidget):
             x = pos.x()
             y = pos.y()
             # Emit the signal with the x and y coordinates
-            self.sigPatternHovered.emit(x, y)
-
-            # print(f"Hovered at x: {x}, y: {y}")
+            self.sigPatternHovered.emit((x, y))
         else:
-            # If the mouse is exiting, you can clear any hover-related information
-            #print("Mouse exited the plot item.")
-            pass
+            # emit None to indicate the mouse is no longer hovering
+            self.sigPatternHovered.emit(None)  # Emit None to indicate no hover
     
     def clear(self):
         """Clear the pattern data"""
@@ -518,7 +511,7 @@ class AuxiliaryPlotWidget(QWidget):
     - sigAuxHovered: Emitted when the mouse hovers over a vertical line, providing the x and y coordinates.
     """
     sigVLineMoved = QtCore.pyqtSignal(int, int)  # Signal emitted when a vertical line is moved
-    sigAuxHovered = QtCore.pyqtSignal(float, float)  # Signal emitted when the mouse hovers over a vertical line
+    sigAuxHovered = QtCore.pyqtSignal(object)  # Signal emitted when the mouse hovers over a vertical line
     def __init__(self, parent=None):
         super().__init__(parent)
         self.v_lines = []
@@ -613,13 +606,10 @@ class AuxiliaryPlotWidget(QWidget):
             x = pos.x()
             y = pos.y()
             # Emit the signal with the x and y coordinates
-            self.sigAuxHovered.emit(x, y)
-
-            # print(f"Hovered at x: {x}, y: {y}")
+            self.sigAuxHovered.emit((x, y))
         else:
-            # If the mouse is exiting, you can clear any hover-related information
-            #print("Mouse exited the plot item.")
-            pass
+            # emit None to indicate the mouse is no longer hovering
+            self.sigAuxHovered.emit(None)
 
 
     def clear_plot(self):
