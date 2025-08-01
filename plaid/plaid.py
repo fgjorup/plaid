@@ -1233,14 +1233,12 @@ class MainWindow(QMainWindow):
         """Show the about dialog."""
         about_text = (
             "<h2>plaid - plot azimuthally integrated data</h2>"
-            "<p>Version 0.1</p>"
-            "<p>This application allows you to visualize azimuthally integrated data "
-            "from HDF5 files and compare them with reference patterns from CIF files.</p>"
-            "<p>Developed by: <a href='mailto:fgjorup@chem.au.dk'>F.H. Gjørup</a><br>"
-            "Department of Chemistry, Aarhus University & <br>"
-            "MAX IV Laboratory, Lund University</p>"
-            "<p>License: GPL-3.0</p>"
-            "<p>For more information, visit the <a href='https://github.com/fgjorup/plaid'>GitHub repository</a>.</p>"
+            f"<p>Version {plaid.__version__}</p>"
+            f"<p>{plaid.__description__}</p>"
+            f"<p>Developed by: <a href='mailto:{plaid.__email__}'>{plaid.__author__}</a><br>"
+            f"{plaid.__institution__.replace('& ', '&<br>')}</p>"
+            f"<p>License: {plaid.__license__}</p>"
+            f"<p>For more information, visit the <a href='{plaid.__url__}'>GitHub repository</a>.</p>"
         )
         # Show the about dialog with the specified text
         QMessageBox.about(self, "About", about_text)
