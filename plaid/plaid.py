@@ -962,6 +962,8 @@ class MainWindow(QMainWindow):
                 col_header = f'{"q":^7}_{"intensity":>10}'
             else:
                 col_header = f'{"2theta":>7}_{"intensity":>10}'
+            if self.azint_data.I_error is not None:
+                col_header += f'_{"error":>10}'
             if export_settings['space_radio']:
                 col_header = col_header.replace('_', ' ')
             else:
@@ -974,6 +976,8 @@ class MainWindow(QMainWindow):
             fmt = '%.6e'
         else:
             fmt = ['%7.4f', '%10.2f']
+            if self.azint_data.I_error is not None:
+                fmt.append('%10.2f')
         # delimiter
         if export_settings['space_radio']:
             delimiter = ' '
