@@ -148,28 +148,4 @@ def get_source_name(gr):
     return None
 
 if __name__ == "__main__":
-    #fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\scan-0101_pilatus_integrated.h5"
-    fname = r"C:\Users\au480461\Postdoc\Scripts\test_files\1D_2D.h5"
-
-    with h5.File(fname, 'r') as f:
-        entry = get_nx_entry(f)
-        instrument = get_nx_instrument(entry)
-        monochromator = get_nx_monochromator(entry)
-        source = get_nx_source(entry)
-        monitor = get_nx_monitor(entry)
-        default = get_nx_default(f)
-
-        signal = get_nx_signal(default)
-
-        # check if there are errors available for the signal
-        # in the default group
-        print("Signal errors:", get_nx_signal_errors(default))
-
-        # print(get_instrument_name(f))
-        # print(get_source_name(f))
-
-        # print(get_nx_entry(f) == get_nx_entry(entry))
-        # print(get_nx_instrument(f) == get_nx_instrument(entry))
-        # print(get_nx_monochromator(f) == get_nx_monochromator(entry))
-        # print(get_nx_source(f) == get_nx_source(entry))
-        # print(get_nx_monitor(f) == get_nx_monitor(entry))
+    pass

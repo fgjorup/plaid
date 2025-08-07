@@ -20,8 +20,5 @@ __license__ = 'GPL-3.0'  # GNU General Public License v3.0
 __url__ = 'https://github.com/fgjorup/plaid'
 __description__ = 'Plot azimuthally integrated X-ray diffraction data'
 
-# Import main classes/functions for easy access
-from .plaid import MainWindow
-from .data_containers import AzintData, AuxData
-from .reference import Reference
+
 
