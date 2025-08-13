@@ -11,14 +11,20 @@ including loading files, displaying heatmaps and patterns, and managing auxiliar
 import sys
 import os
 import numpy as np
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, 
-                             QDockWidget, QSizePolicy, QFileDialog, QMessageBox, QProgressDialog)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget,
+                             QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QCheckBox)
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
 from datetime import datetime
 import argparse
+try:
+    import requests
+    import packaging.version
+    HAS_UPDATE_CHECKER = True
+except ImportError:
+    HAS_UPDATE_CHECKER = False
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(script_dir)
@@ -32,7 +38,10 @@ from plaid.reference import Reference
 from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
 from plaid.misc import q_to_tth, tth_to_q
 from plaid.data_containers import AzintData, AuxData
+from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
+
+
 
 
 # # debug fn to show who is calling what and when to find out why.
@@ -72,6 +81,27 @@ colors = [
         "#0066FF",  # Blue
         '#AAAAAA',  # Light Gray
         ]
+
+# Update checking
+def check_for_updates():
+    """
+    Check if a newer version is available on PyPI.
+    Returns the latest version string if an update is available, None otherwise.
+    """
+    if not HAS_UPDATE_CHECKER:
+        return None
+        
+    try:
+        response = requests.get("https://pypi.org/pypi/plaid-xrd/json", timeout=5)
+        if response.status_code == 200:
+            data = response.json()
+            latest_version = data['info']['version']
+            if packaging.version.parse(latest_version) > packaging.version.parse(CURRENT_VERSION):
+                return latest_version
+    except Exception:
+        # Silently fail if network is unavailable or other issues
+        pass
+    return None
 
 def read_settings():
     """Read the application settings from a file."""
@@ -155,6 +185,12 @@ def clear_recent_refs_settings():
     settings.setValue("recent-references", [])
     settings.endGroup()
 
+def clear_all_settings():
+    """Clear all saved settings."""
+    settings = QtCore.QSettings("plaid", "plaid")
+    settings.clear()
+    print("All settings cleared.")
+
 
 class MainWindow(QMainWindow):
     """plaid - Main application window for plotting azimuthally integrated data."""
@@ -223,6 +259,9 @@ class MainWindow(QMainWindow):
         self.resizeDocks([self.file_tree_dock, self.cif_tree_dock, self.auxiliary_plot_dock],
                          [250, 250, 250], 
                          QtCore.Qt.Orientation.Horizontal)
+        
+        # Check for updates on startup (non-blocking)
+        self._check_for_updates_on_startup()
 
     def _init_file_tree(self):
         """Initialize the file tree widget. Called by self.__init__()."""
@@ -430,6 +469,20 @@ class MainWindow(QMainWindow):
         help_action.setToolTip("Show help dialog")
         help_action.triggered.connect(self.show_help_dialog)
         help_menu.addAction(help_action)
+        
+        # Add separator
+        help_menu.addSeparator()
+        
+        # Add action to check for updates
+        update_action = QAction("Check for &Updates", self)
+        update_action.setToolTip("Check for newer versions on PyPI")
+        update_action.triggered.connect(self.check_for_updates_manual)
+        update_action.setEnabled(HAS_UPDATE_CHECKER)  # Only enable if requests is available
+        help_menu.addAction(update_action)
+        
+        # Add separator
+        help_menu.addSeparator()
+        
         # Add an action to show the about dialog
         about_action = QAction("&About", self)
         about_action.setToolTip("Show about dialog")
@@ -1247,6 +1300,71 @@ class MainWindow(QMainWindow):
         # Show the about dialog with the specified text
         QMessageBox.about(self, "About", about_text)
 
+    def _check_for_updates_on_startup(self):
+        """
+        Check for updates on startup and show a notification if available.
+        Uses QTimer to make the check non-blocking and delay it slightly.
+        """
+        # Check if user has disabled update checking
+        settings = QtCore.QSettings("plaid", "plaid")
+        if not settings.value("check_for_updates", True, type=bool):
+            return
+            
+        def perform_update_check():
+            latest_version = check_for_updates()
+            if latest_version:
+                self._show_update_notification(latest_version)
+        
+        # Delay the update check by 2 seconds to avoid blocking startup
+        QtCore.QTimer.singleShot(2000, perform_update_check)
+    
+    def _show_update_notification(self, latest_version):
+        """Show a notification about available updates."""
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setWindowTitle("Update Available")
+        msg.setText(f"A newer version of plaid is available!")
+        msg.setInformativeText(
+            f"Current version: {CURRENT_VERSION}\n"
+            f"Latest version: {latest_version}\n\n"
+            f"You can update using:\npip install --upgrade plaid-xrd"
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        
+        # Add a "Don't show again" checkbox
+        checkbox = QCheckBox("Don't check for updates on startup")
+        msg.setCheckBox(checkbox)
+        # get the current state of the checkbox
+        settings = QtCore.QSettings("plaid", "plaid")
+        check_for_updates = settings.value("check_for_updates", True, type=bool)
+        checkbox.setChecked(not check_for_updates)
+
+        result = msg.exec()
+        settings.setValue("check_for_updates", not checkbox.isChecked())
+
+    def check_for_updates_manual(self):
+        """Manually check for updates when requested by user."""
+        if not HAS_UPDATE_CHECKER:
+            QMessageBox.warning(self, "Update Check Unavailable", 
+                              "Update checking requires the 'requests' and 'packaging' libraries.\n"
+                              "Install them with: pip install requests packaging")
+            return
+        
+        # Show a progress indicator
+        self.statusBar().showMessage("Checking for updates...")
+        
+        def perform_check():
+            latest_version = check_for_updates()
+            if latest_version:
+                self._show_update_notification(latest_version)
+            else:
+                QMessageBox.information(self, "No Updates", 
+                                      f"You are running the latest version ({CURRENT_VERSION}).")
+            self.statusBar().clearMessage()
+        
+        # Use QTimer to make it non-blocking
+        QtCore.QTimer.singleShot(100, perform_check)
+
     def show(self):
         """Override the show method to update the pattern geometry."""
         super().show()
@@ -1272,6 +1390,8 @@ def parse_args():
     parser.add_argument("-c", "--clear-recent-files", action="store_true", help="Clear the recent files list on startup.")
     # add an argument for the clearing the recent references
     parser.add_argument("-r", "--clear-recent-refs", action="store_true", help="Clear the recent references list on startup.")
+    # add an argument for clearing all settings
+    parser.add_argument("--clear-all-settings", action="store_true", help="Clear all saved settings including recent files on startup.")
 
     return parser.parse_args()
 
@@ -1284,6 +1404,9 @@ def main():
     
     if args.limit_export:
         ALLOW_EXPORT_ALL_PATTERNS = False
+    if args.clear_all_settings:
+        # clear all settings on startup
+        clear_all_settings()
     if args.clear_recent_files:
         # clear the recent files list on startup
         clear_recent_files_settings()

@@ -26,7 +26,9 @@ setup(
         "h5py",
         "PyQt6>=6.8.1",
         "pyqtgraph>=0.13.7",
-        "Dans-Diffraction>=3.0.0"
+        "Dans-Diffraction>=3.0.0",
+        "requests >= 2.25.0",
+        "packaging >= 20.0"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
