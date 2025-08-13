@@ -1383,15 +1383,20 @@ def parse_args():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="Plot azimuthally integrated data from HDF5 files.")
     # Add an argument for opening a file on startup
-    parser.add_argument("-f", "--file", nargs='*', help="File(s) to open on startup. Can be multiple files.")
+    parser.add_argument("-f", "--file", nargs='*', 
+                        help="File(s) to open on startup. Can be multiple files.")
     # Add an argument for limiting the export options
-    parser.add_argument("-l", "--limit-export", action="store_true", help="Limit the export options to individual patterns.")
+    parser.add_argument("-l", "--limit-export", action="store_true", 
+                        help="Limit the export options to individual patterns.")
     # add an argument for the clearing the recent files
-    parser.add_argument("-c", "--clear-recent-files", action="store_true", help="Clear the recent files list on startup.")
+    parser.add_argument("-c", "--clear-recent-files", action="store_true", 
+                        help="Clear the recent files list on startup.")
     # add an argument for the clearing the recent references
-    parser.add_argument("-r", "--clear-recent-refs", action="store_true", help="Clear the recent references list on startup.")
+    parser.add_argument("-r", "--clear-recent-refs", action="store_true",
+                         help="Clear the recent references list on startup.")
     # add an argument for clearing all settings
-    parser.add_argument("--clear-all-settings", action="store_true", help="Clear all saved settings including recent files on startup.")
+    parser.add_argument("--clear-all-settings", action="store_true", 
+                        help="Clear all saved settings including recent files without starting the application.")
 
     return parser.parse_args()
 
@@ -1405,8 +1410,10 @@ def main():
     if args.limit_export:
         ALLOW_EXPORT_ALL_PATTERNS = False
     if args.clear_all_settings:
-        # clear all settings on startup
+        # clear all settings and close the application
         clear_all_settings()
+        sys.exit()
+
     if args.clear_recent_files:
         # clear the recent files list on startup
         clear_recent_files_settings()
