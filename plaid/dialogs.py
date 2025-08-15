@@ -10,11 +10,15 @@ This module provides dialogs classes to select and manage HDF5 files and their c
 """
 from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QTreeWidget, QTreeWidgetItem, QDialog,
                              QPushButton, QLineEdit, QCheckBox, QRadioButton, QButtonGroup, 
-                             QSpinBox, QLabel, QGroupBox)
-from PyQt6.QtGui import QRegularExpressionValidator
+                             QSpinBox, QLabel, QGroupBox, QColorDialog)
+
+from PyQt6.QtGui import QRegularExpressionValidator, QColor, QPixmap, QPainter, QBrush, QIcon
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
+import numpy as np
+import re
+
 
 class H5Dialog(QDialog):
     """
@@ -73,6 +77,7 @@ class H5Dialog(QDialog):
         self.selected_tree = QTreeWidget()
         self.selected_tree.setHeaderLabels(['Alias', 'Path', 'Shape'])
         self.selected_tree.setSortingEnabled(False)
+        self.selected_tree.setRootIsDecorated(False)
         self.layout().addWidget(self.selected_tree, 1)
         self.selected_tree.itemDoubleClicked.connect(self.edit_alias)
 
@@ -561,5 +566,451 @@ class ExportSettingsDialog(QDialog):
         super().reject()
 
 
+class ColorCycleDialog(QDialog):
+    """
+    A dialog for managing color cycles used in plots.
+    
+    Allows users to add, remove, edit, and reorder colors in the color cycle.
+    Provides preset color schemes and a live preview of the colors.
+    """
+    
+    # Signal emitted when color cycle is changed
+    colorCycleChanged = QtCore.pyqtSignal(list)
+    
+    def __init__(self, parent=None, initial_colors=None):
+        super().__init__(parent)
+        self.setWindowTitle("Color Cycle Settings")
+        self.setModal(True)
+        self.resize(600, 450)
+        
+        # Default color cycle (matplotlib-style)
+        # self._default_colors = [
+        #     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
+        #     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"
+        # ]
+        
+        # Default color cycle
+        # self._default_colors = [
+        #                     '#AAAA00',  # Yellow
+        #                     '#AA00AA',  # Magenta
+        #                     '#00AAAA',  # Cyan
+        #                     '#AA0000',  # Red
+        #                     '#00AA00',  # Green
+        #                     "#0066FF",  # Blue
+        #                     '#AAAAAA',  # Light Gray
+        #                     ]
+        if isinstance(initial_colors, list) and len(initial_colors) > 0:
+            self.colors = initial_colors[:]
+        else:
+            self.colors = self.get_preset_colors(1)
+        self._original_colors = self.colors[:]
+
+        # Current colors
+        # self.colors = initial_colors[:] if initial_colors else self._default_colors[:]
+        
+        # Store original colors for cancel functionality
+        # self._original_colors = initial_colors[:] if initial_colors else self._default_colors[:]
+        
+        # Preview data storage (x, y) - None means use default sine waves
+        self._preview_data = None
+        
+        self._setup_ui()
+        self._populate_color_list()
+        self._update_preview()
+
+        self.setModal(False)
+        
+    def _setup_ui(self):
+        """Set up the user interface."""
+        layout = QVBoxLayout(self)
+        
+        # Title label
+        title_label = QLabel("Color Cycle Configuration")
+        title_label.setStyleSheet("font-weight: bold; font-size: 14px; margin: 5px;")
+        layout.addWidget(title_label)
+        
+        # Main content layout
+        content_layout = QHBoxLayout()
+        layout.addLayout(content_layout)
+        
+        # Left side - color list and controls
+        left_layout = QVBoxLayout()
+        content_layout.addLayout(left_layout, 2)
+        
+        # Color list
+        self.color_list = QTreeWidget()
+        self.color_list.setHeaderLabels(["Color", "Hex Value"])
+        self.color_list.setRootIsDecorated(False)
+        #self.color_list.setAlternatingRowColors(True)
+        self.color_list.setSelectionMode(QTreeWidget.SelectionMode.SingleSelection)
+        self.color_list.setDragDropMode(QTreeWidget.DragDropMode.NoDragDrop)  # Disable drag-and-drop
+        self.color_list.itemSelectionChanged.connect(self._on_selection_changed)
+        self.color_list.itemChanged.connect(self._on_item_changed)
+        left_layout.addWidget(self.color_list)
+        
+        # Color control buttons
+        button_layout = QHBoxLayout()
+        left_layout.addLayout(button_layout)
+        
+        self.add_button = QPushButton("Add Color")
+        self.add_button.clicked.connect(self._add_color)
+        button_layout.addWidget(self.add_button)
+        
+        self.edit_button = QPushButton("Edit Color")
+        self.edit_button.clicked.connect(self._edit_color)
+        self.edit_button.setEnabled(False)
+        button_layout.addWidget(self.edit_button)
+        
+        self.remove_button = QPushButton("Remove Color")
+        self.remove_button.clicked.connect(self._remove_color)
+        self.remove_button.setEnabled(False)
+        button_layout.addWidget(self.remove_button)
+        
+        # Preset buttons
+        preset_group = QGroupBox("Presets")
+        preset_layout = QVBoxLayout(preset_group)
+        left_layout.addWidget(preset_group)
+        
+        preset_button_layout = QHBoxLayout()
+        preset_layout.addLayout(preset_button_layout)
+        
+        self.preset1_button = QPushButton("Preset 1")
+        self.preset1_button.clicked.connect(self._load_preset1_colors)
+        preset_button_layout.addWidget(self.preset1_button)
+        
+        self.preset2_button = QPushButton("Preset 2")
+        self.preset2_button.clicked.connect(self._load_preset2_colors)
+        preset_button_layout.addWidget(self.preset2_button)
+        
+        self.preset3_button = QPushButton("Preset 3")
+        self.preset3_button.clicked.connect(self._load_preset3_colors)
+        preset_button_layout.addWidget(self.preset3_button)
+        
+        self.preset4_button = QPushButton("Preset 4")
+        self.preset4_button.clicked.connect(self._load_preset4_colors)
+        preset_button_layout.addWidget(self.preset4_button)
+        
+        # Right side - preview
+        right_layout = QVBoxLayout()
+        content_layout.addLayout(right_layout, 3)
+        
+        preview_label = QLabel("Preview")
+        preview_label.setStyleSheet("font-weight: bold; margin-bottom: 5px;")
+        right_layout.addWidget(preview_label)
+        
+        # Preview plot widget
+        self.preview_widget = pg.PlotWidget()
+        #self.preview_widget.setLabel('left', 'Value')
+        #self.preview_widget.setLabel('bottom', 'Index')
+        self.preview_widget.setMinimumHeight(200)
+        self.preview_widget.showGrid(x=True, y=True, alpha=0.3)
+        right_layout.addWidget(self.preview_widget)
+        
+        # Dialog buttons
+        button_layout = QHBoxLayout()
+        layout.addLayout(button_layout)
+        
+        self.reset_button = QPushButton("Reset")
+        self.reset_button.clicked.connect(self._reset_colors)
+        button_layout.addWidget(self.reset_button)
+        
+        button_layout.addStretch()
+        
+        self.apply_button = QPushButton("Apply")
+        self.apply_button.clicked.connect(self._apply_changes)
+        button_layout.addWidget(self.apply_button)
+        
+        self.cancel_button = QPushButton("Cancel")
+        self.cancel_button.clicked.connect(self.reject)
+        button_layout.addWidget(self.cancel_button)
+        
+        self.ok_button = QPushButton("OK")
+        self.ok_button.clicked.connect(self.accept)
+        self.ok_button.setDefault(True)
+        button_layout.addWidget(self.ok_button)
+    
+    def _populate_color_list(self):
+        """Populate the color list with current colors."""
+        self.color_list.clear()
+        for i, color in enumerate(self.colors):
+            self._add_color_item(color)
+    
+    def _add_color_item(self, color_hex):
+        """Add a color item to the list."""       
+        item = QTreeWidgetItem()
+        
+        # Create color swatch
+        pixmap = QPixmap(20, 20)
+        painter = QPainter(pixmap)
+        painter.fillRect(pixmap.rect(), QBrush(QColor(color_hex)))
+        painter.end()
+        
+        item.setIcon(0, QIcon(pixmap))
+        item.setText(0, f"Color {self.color_list.topLevelItemCount() + 1}")
+        item.setText(1, color_hex)
+        item.setData(0, QtCore.Qt.ItemDataRole.UserRole, color_hex)
+        
+        self.color_list.addTopLevelItem(item)
+    
+    def _update_preview(self):
+        """Update the preview plot with current colors."""
+        self.preview_widget.clear()
+        
+        if self._preview_data is not None:
+            # Use custom preview data with offsets
+            x, y = self._preview_data
+            
+            # Calculate offset based on data range
+            y_range = np.max(y) - np.min(y)
+            offset_step = y_range * 0.3  # 30% of data range as offset
+            
+            for i, color in enumerate(self.colors):
+                y_offset = y + i * offset_step
+                pen = pg.mkPen(color=color, width=2)
+                self.preview_widget.plot(x, y_offset, pen=pen, name=f"Color {i+1}")
+                
+        else:
+            # Use default sine wave preview
+            x = np.linspace(0, 10, 50)
+            
+            for i, color in enumerate(self.colors):
+                y = np.sin(x + i * 0.5) + i * 0.2
+                pen = pg.mkPen(color=color, width=2)
+                self.preview_widget.plot(x, y, pen=pen, name=f"Line {i+1}")
+    
+    def _on_selection_changed(self):
+        """Handle selection changes in the color list."""
+        has_selection = bool(self.color_list.selectedItems())
+        self.edit_button.setEnabled(has_selection)
+        self.remove_button.setEnabled(has_selection and len(self.colors) > 1)
+    
+    def _on_item_changed(self, item, column):
+        """Handle item changes in the color list."""
+        if column == 1:  # Hex value column
+            new_hex = item.text(1)
+            if self._is_valid_hex_color(new_hex):
+                index = self.color_list.indexOfTopLevelItem(item)
+                if 0 <= index < len(self.colors):
+                    self.colors[index] = new_hex
+                    item.setData(0, QtCore.Qt.ItemDataRole.UserRole, new_hex)
+                    self._update_color_icon(item, new_hex)
+                    self._update_preview()
+    
+    def _add_color(self):
+        """Add a new color to the cycle."""
+        color = QColorDialog.getColor()
+        if color.isValid():
+            hex_color = color.name()
+            self.colors.append(hex_color)
+            self._add_color_item(hex_color)
+            self._update_preview()
+    
+    def _edit_color(self):
+        """Edit the selected color."""
+        selected_items = self.color_list.selectedItems()
+        if not selected_items:
+            return
+        
+        item = selected_items[0]
+        index = self.color_list.indexOfTopLevelItem(item)
+        current_color = QColor(self.colors[index])
+        
+        color = QColorDialog.getColor(current_color)
+        if color.isValid():
+            hex_color = color.name()
+            self.colors[index] = hex_color
+            item.setText(1, hex_color)
+            item.setData(0, QtCore.Qt.ItemDataRole.UserRole, hex_color)
+            self._update_color_icon(item, hex_color)
+            self._update_preview()
+    
+    def _remove_color(self):
+        """Remove the selected color from the cycle."""
+        selected_items = self.color_list.selectedItems()
+        if not selected_items or len(self.colors) <= 1:
+            return
+        
+        item = selected_items[0]
+        index = self.color_list.indexOfTopLevelItem(item)
+        
+        del self.colors[index]
+        self.color_list.takeTopLevelItem(index)
+        self._update_preview()
+        self._renumber_items()
+    
+    def _renumber_items(self):
+        """Renumber the color items after removal."""
+        for i in range(self.color_list.topLevelItemCount()):
+            item = self.color_list.topLevelItem(i)
+            item.setText(0, f"Color {i + 1}")
+    
+    def _update_color_icon(self, item, color_hex):
+        """Update the color icon for an item."""
+        pixmap = QPixmap(20, 20)
+        painter = QPainter(pixmap)
+        painter.fillRect(pixmap.rect(), QBrush(QColor(color_hex)))
+        painter.end()
+        item.setIcon(0, QIcon(pixmap))
+    
+    def _is_valid_hex_color(self, hex_str):
+        """Check if a string is a valid hex color."""
+        pattern = r'^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$'
+        return bool(re.match(pattern, hex_str))
+
+    def get_preset_colors(self, preset_number):
+        """Get colors for a specific preset."""
+        if preset_number == 1:
+            return [
+                "#C41E3A", "#FF8C00", "#228B22", "#4169E1", "#8B008B", "#2F4F4F"
+            ]
+        elif preset_number == 2:
+            return [
+                "#FF6B35", "#00D4AA", "#8A2BE2", "#FFD700", "#FF1493", "#87CEEB"
+            ]
+        elif preset_number == 3:
+            return [
+                "#000080", "#FF4500", "#32CD32", "#FF1493", "#8B4513", "#00CED1"
+            ]
+        elif preset_number == 4:
+            return [
+                "#FFD700", "#DC143C", "#00FF7F", "#1E90FF", "#9370DB", "#FF6347"
+            ]
+        return []
+
+    def _load_preset1_colors(self):
+        """Load preset 1 colors (High Contrast Light Mode)."""
+        preset1_colors = self.get_preset_colors(1)
+        self.colors = preset1_colors[:]
+        self._populate_color_list()
+        self._update_preview()
+    
+    def _load_preset2_colors(self):
+        """Load preset 2 colors (Distinct Dark Mode)."""
+        preset2_colors = self.get_preset_colors(2)
+        self.colors = preset2_colors[:]
+        self._populate_color_list()
+        self._update_preview()
+    
+    def _load_preset3_colors(self):
+        """Load preset 3 colors (Maximum Separation Colorblind Light)."""
+        preset3_colors = self.get_preset_colors(3)
+        self.colors = preset3_colors[:]
+        self._populate_color_list()
+        self._update_preview()
+
+    def _load_preset4_colors(self):
+        """Load preset 4 colors (Perceptually Uniform Dark Colorblind)."""
+        preset4_colors = self.get_preset_colors(4)
+        self.colors = preset4_colors[:]
+        self._populate_color_list()
+        self._update_preview()
+    
+    def _reset_colors(self):
+        """Reset colors to original values."""
+        self.colors = self._original_colors[:]
+        self._populate_color_list()
+        self._update_preview()
+    
+    def get_colors(self):
+        """Get the current color cycle."""
+        return self.colors[:]
+    
+    def set_colors(self, colors):
+        """Set the color cycle."""
+        self.colors = colors[:]
+        self._populate_color_list()
+        self._update_preview()
+    
+    def set_preview_data(self, y, x=None):
+        """
+        Set custom data for the preview plot.
+        
+        Each color will be shown with the same data pattern but vertically offset
+        to demonstrate how the colors look when plotting similar data.
+        
+        Parameters:
+        -----------
+        y : array-like
+            Y-axis data that will be offset for each color
+        x : array-like, optional
+            X-axis data. If None, will use indices (0, 1, 2, ...)
+            
+        Example:
+        --------
+        # Use with your actual pattern data
+        dialog.set_preview_data(pattern_intensity)
+        
+        # Or with custom x-axis
+        dialog.set_preview_data(pattern_intensity, q_values)
+        """
+        
+        if y is None:
+            self._preview_data = None
+        else:
+            y = np.asarray(y)
+            if x is None:
+                x = np.arange(len(y))
+            else:
+                x = np.asarray(x)
+            
+            # Ensure x and y have the same length
+            if len(x) != len(y):
+                raise ValueError(f"x and y must have the same length. Got x: {len(x)}, y: {len(y)}")
+            
+            self._preview_data = (x, y)
+        self._update_preview()
+    
+    def clear_preview_data(self):
+        """Clear custom preview data and revert to default sine waves."""
+        self._preview_data = None
+        self._update_preview()
+    
+    def _apply_changes(self):
+        """Apply color changes by emitting the signal without closing the dialog."""
+        self.colorCycleChanged.emit(self.colors[:])
+        # Update the original colors to the currently applied colors
+        # so that Cancel won't revert to the old state after Apply is used
+        self._original_colors = self.colors[:]
+    
+    def accept(self):
+        """Accept the dialog and emit the color cycle changed signal."""
+        self.colorCycleChanged.emit(self.colors[:])
+        super().accept()
+    
+    def reject(self):
+        """Reject the dialog and restore original colors."""
+        #self.colors = self._original_colors[:]
+        self._reset_colors()
+        super().reject()
+
+    def show(self):
+        """Show the color cycle dialog as a non-modal dialog."""
+        # Store original colors for cancel functionality
+        self._original_colors = self.colors[:]
+        super().show()
+    
+    def exec(self):
+        """Show the color cycle dialog as a modal dialog."""
+        # Store original colors for cancel functionality
+        self._original_colors = self.colors[:]
+        return super().exec()
+
+    def open(self):
+        """Open the dialog as a modal dialog, returning immediately."""
+        # Store original colors for cancel functionality
+        self._original_colors = self.colors[:]
+        super().open()
+
+
 if __name__ == "__main__":
-    pass
+    # TEST
+    # test the colordialog
+    import sys
+    from PyQt6.QtWidgets import QApplication
+    app = QApplication(sys.argv)
+    dialog = ColorCycleDialog()
+
+    # generate test data
+    y = np.random.rand(100)
+    dialog.set_preview_data(y)
+    dialog.exec()

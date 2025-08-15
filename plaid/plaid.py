@@ -33,7 +33,7 @@ if script_dir not in sys.path:
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 from plaid.trees import FileTreeWidget, CIFTreeWidget
-from plaid.dialogs import H5Dialog, ExportSettingsDialog
+from plaid.dialogs import H5Dialog, ExportSettingsDialog, ColorCycleDialog
 from plaid.reference import Reference
 from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
 from plaid.misc import q_to_tth, tth_to_q
@@ -207,11 +207,18 @@ class MainWindow(QMainWindow):
 
         self.azint_data = AzintData()
         self.aux_data = {}
+        
+        self._load_color_cycle()
+        if not self.color_cycle:
+            self.color_cycle = colors
 
         # create the export settings dialog
         self.export_settings_dialog = ExportSettingsDialog(self)
         self.export_settings_dialog.set_settings(self._load_export_settings())
         self.export_settings_dialog.sigSaveAsDefault.connect(self._save_export_settings)
+
+        self.color_dialog = ColorCycleDialog(self,initial_colors=self.color_cycle)
+        self.color_dialog.colorCycleChanged.connect(self._update_color_cycle)
 
         # Create the main layout
         main_layout = QHBoxLayout()
@@ -225,10 +232,10 @@ class MainWindow(QMainWindow):
         self.centralWidget().setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
         # Create the heatmap widget
-        self.heatmap = HeatmapWidget()
+        self.heatmap = HeatmapWidget(self)
 
         # Create the PatternWidget
-        self.pattern = PatternWidget()
+        self.pattern = PatternWidget(self)
 
         # Add the widgets to the main layout
         plot_layout.addWidget(self.heatmap,1)
@@ -259,7 +266,10 @@ class MainWindow(QMainWindow):
         self.resizeDocks([self.file_tree_dock, self.cif_tree_dock, self.auxiliary_plot_dock],
                          [250, 250, 250], 
                          QtCore.Qt.Orientation.Horizontal)
-        
+
+        # ensure color cycle is updated
+        self._update_color_cycle(self.color_dialog.get_colors())
+
         # Check for updates on startup (non-blocking)
         self._check_for_updates_on_startup()
 
@@ -428,6 +438,12 @@ class MainWindow(QMainWindow):
         toggle_q_action.triggered.connect(self.toggle_q)
         view_menu.addAction(toggle_q_action)
         self.toggle_q_action = toggle_q_action
+        # add a separator
+        view_menu.addSeparator()
+        # add a change color cycle action
+        change_color_cycle_action = QAction("&Change Color Cycle", self)
+        change_color_cycle_action.triggered.connect(self.show_color_cycle_dialog)
+        view_menu.addAction(change_color_cycle_action)
 
     def _init_export_menu(self, menu_bar):
         """Initialize the Export menu with actions to export patterns and settings. Called by self._init_menu_bar()."""
@@ -1184,6 +1200,7 @@ class MainWindow(QMainWindow):
 
         # # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
+            
             # h5dialog = H5Dialog(self, self.azint_data.fnames[0])
             # if h5dialog.exec_1d_2d_pair():
             #     selected = h5dialog.get_selected_items()
@@ -1209,7 +1226,26 @@ class MainWindow(QMainWindow):
             #     # attempt to guess if the axis is q or 2theta
             #     is_q = 'q' in axis[0].lower() or 'q' in f[axis[1]].attrs.get('long_name', '').lower()
             # print(x, I, is_q, None)
+            
+            # ## TEST COLORDIALOG
             pass
+
+    def show_color_cycle_dialog(self):
+        # get the first pattern (if available)
+        x,y = self.pattern.pattern_items[0].getData() if self.pattern.pattern_items else [None, None]
+        self.color_dialog.set_preview_data(y,x=x)
+        self.color_dialog.show()
+
+
+    def _update_color_cycle(self, color_cycle):
+            self.color_cycle = color_cycle
+            #self.color_cycle = self.color_dialog.get_colors()
+            self.heatmap.set_color_cycle(self.color_cycle)
+            self.pattern.set_color_cycle(self.color_cycle)
+            self.auxiliary_plot.set_color_cycle(self.color_cycle)
+            self.cif_tree.set_color_cycle(self.color_cycle[::-1]) # flip the cycle for the CIF tree
+
+
 
     def _save_dock_settings(self):
         """Save the dock widget settings."""
@@ -1258,6 +1294,20 @@ class MainWindow(QMainWindow):
             settings[key] = export_settings.value(key)
         export_settings.endGroup()
         return settings
+    
+    def _save_color_cycle(self):
+        """Save the color cycle settings."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("ColorCycle")
+        settings.setValue("colors", self.color_cycle)
+        settings.endGroup()
+
+    def _load_color_cycle(self):
+        """Load the color cycle settings."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("ColorCycle")
+        self.color_cycle = settings.value("colors", [], type=list)
+        settings.endGroup()
 
     def show_help_dialog(self):
         """Show the help dialog."""
@@ -1377,6 +1427,7 @@ class MainWindow(QMainWindow):
         recent_refs = self.cif_tree.files
         save_recent_refs_settings(recent_refs)
         self._save_dock_settings()
+        self._save_color_cycle()
         event.accept()
 
 def parse_args():

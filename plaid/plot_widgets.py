@@ -11,6 +11,7 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 import numpy as np
 from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
 from PyQt6 import QtCore
+from PyQt6.QtGui import QColor
 import pyqtgraph as pg
 
 colors = [
@@ -51,6 +52,7 @@ class HeatmapWidget(QWidget):
         self.h_lines = []
         self.active_line = None
         self.use_log_scale = False  # Flag to use logarithmic scale for the heatmap
+        self.color_cycle = colors
         # Create a layout
         layout = QHBoxLayout(self)
 
@@ -93,8 +95,8 @@ class HeatmapWidget(QWidget):
 
     def addHLine(self, pos=0):
         """Add a horizontal line to the plot."""
-        pen = pg.mkPen(color=colors[len(self.h_lines) % len(colors)], width=1)
-        hoverpen = pg.mkPen(color=colors[len(self.h_lines) % len(colors)], width=3)
+        pen = pg.mkPen(color=self.color_cycle[len(self.h_lines) % len(self.color_cycle)], width=1)
+        hoverpen = pg.mkPen(color=self.color_cycle[len(self.h_lines) % len(self.color_cycle)], width=3)
         h_line = pg.InfiniteLine(angle=0, movable=True, pen=pen,hoverPen=hoverpen)
         h_line.setPos(pos+.5)
         h_line.sigPositionChanged.connect(self.h_line_moved)
@@ -277,6 +279,20 @@ class HeatmapWidget(QWidget):
         else:
             # emit None to indicate the mouse is no longer hovering
             self.sigImageHovered.emit(None)
+    
+    def set_color_cycle(self,color_cycle):
+        """Set the color cycle for the plot items."""
+        self.color_cycle = color_cycle
+        self._update_line_colors()
+
+    def _update_line_colors(self):
+        """Update the colors of the line items based on the color cycle."""
+        for i, line in enumerate(self.h_lines):
+            color = QColor(self.color_cycle[i % len(self.color_cycle)])
+            # get the current pen
+            pen = line.pen
+            pen.setColor(color)
+            line.setPen(pen)
 
     def clear(self):
         """Clear the heatmap data and horizontal lines."""
@@ -307,6 +323,8 @@ class PatternWidget(QWidget):
         self.pattern_items = []
         self.reference_items = []
         self.reference_hkl = {}
+
+        self.color_cycle = colors  # Default color cycle for patterns
 
         # Create a layout
         layout = QHBoxLayout(self)
@@ -356,7 +374,7 @@ class PatternWidget(QWidget):
 
     def add_pattern(self):
         """Add a new pattern item to the plot."""
-        color = colors[len(self.pattern_items) % len(colors)]
+        color = self.color_cycle[len(self.pattern_items) % len(self.color_cycle)]
         pen = pg.mkPen(color=color, width=1)
         pattern = pg.PlotDataItem(pen=pen, symbol='o',symbolSize=2, symbolPen=pen, symbolBrush=color, name='frame')
         self.plot_widget.getPlotItem().addItem(pattern)
@@ -393,7 +411,7 @@ class PatternWidget(QWidget):
     
     def add_reference(self, hkl, x, I):
         """Add a reference pattern to the plot."""
-        color = colors[::-1][len(self.reference_items) % len(colors)]
+        color = self.color_cycle[::-1][len(self.reference_items) % len(self.color_cycle)]
         reference_item = pg.PlotDataItem(pen=color,connect='pairs')
         reference_item.setCurveClickable(True)
         reference_item.setZValue(-1)  # Set a lower z-value to draw below the patterns
@@ -494,7 +512,28 @@ class PatternWidget(QWidget):
         else:
             # emit None to indicate the mouse is no longer hovering
             self.sigPatternHovered.emit(None)  # Emit None to indicate no hover
+
+    def set_color_cycle(self,color_cycle):
+        """Set the color cycle for the plot items."""
+        self.color_cycle = color_cycle
+        self._update_pattern_colors()
+        self._update_reference_colors()
+
+    def _update_pattern_colors(self):
+        """Update the colors of the pattern items based on the color cycle."""
+        for i, pattern in enumerate(self.pattern_items):
+            color = QColor(self.color_cycle[i % len(self.color_cycle)])
+            # get the current pen
+            pen = pattern.opts['pen']
+            pen.setColor(color)
+            pattern.setPen(pen)
     
+    def _update_reference_colors(self):
+        """Update the colors of the reference items based on the color cycle (reverse order)."""
+        for i, reference_item in enumerate(self.reference_items):
+            color = QColor(self.color_cycle[::-1][i % len(self.color_cycle)])
+            reference_item.setPen(color)
+
     def clear(self):
         """Clear the pattern data"""
         for i in range(len(self.pattern_items)):
@@ -516,6 +555,7 @@ class AuxiliaryPlotWidget(QWidget):
         super().__init__(parent)
         self.v_lines = []
         self.n = None  # Number of data points in the x-axis
+        self.color_cycle = colors
         # Create a layout
         layout = QVBoxLayout(self)
 
@@ -538,7 +578,7 @@ class AuxiliaryPlotWidget(QWidget):
         if y is None:
             return
         if color is None:
-            color = colors[len(self.plot_item.items) % len(colors)]
+            color = self.color_cycle[len(self.plot_item.items) % len(self.color_cycle)]
         x = np.arange(len(y))
         self.plot_item.plot(x, y, pen=color, name=label if label else 'Auxiliary Plot')
         self.n = len(y)
@@ -551,8 +591,8 @@ class AuxiliaryPlotWidget(QWidget):
 
     def addVLine(self, pos=0):
         """Add a horizontal line to the plot."""
-        pen = pg.mkPen(color=colors[len(self.v_lines) % len(colors)], width=1)
-        hoverpen = pg.mkPen(color=colors[len(self.v_lines) % len(colors)], width=3)
+        pen = pg.mkPen(color=self.color_cycle[len(self.v_lines) % len(self.color_cycle)], width=1)
+        hoverpen = pg.mkPen(color=self.color_cycle[len(self.v_lines) % len(self.color_cycle)], width=3)
         v_line = pg.InfiniteLine(angle=90, movable=True, pen=pen,hoverPen=hoverpen)
         v_line.setPos(pos)
         v_line.sigPositionChanged.connect(self.v_line_moved)
@@ -610,7 +650,20 @@ class AuxiliaryPlotWidget(QWidget):
         else:
             # emit None to indicate the mouse is no longer hovering
             self.sigAuxHovered.emit(None)
+    
+    def set_color_cycle(self,color_cycle):
+        """Set the color cycle for the plot items."""
+        self.color_cycle = color_cycle
+        self._update_line_colors()
 
+    def _update_line_colors(self):
+        """Update the colors of the line items based on the color cycle."""
+        for i, line in enumerate(self.v_lines):
+            color = QColor(self.color_cycle[i % len(self.color_cycle)])
+            # get the current pen
+            pen = line.pen
+            pen.setColor(color)
+            line.setPen(pen)
 
     def clear_plot(self):
         """Clear the auxiliary plot."""

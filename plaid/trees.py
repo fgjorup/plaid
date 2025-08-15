@@ -11,7 +11,7 @@ This module provides classes to create tree widgets for managing files and CIFs.
 import os
 from PyQt6.QtWidgets import  QVBoxLayout, QWidget, QTreeWidget, QTreeWidgetItem, QMenu, QMessageBox
 from PyQt6 import QtCore
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QColor
 import pyqtgraph as pg
 from plaid.reference import validate_cif
 
@@ -56,6 +56,7 @@ class FileTreeWidget(QWidget):
         self.file_tree.setSortingEnabled(False)
         self.file_tree.setColumnWidth(0, 150)
         self.file_tree.setColumnWidth(1, 75)
+        self.file_tree.setRootIsDecorated(False)
         self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         self.file_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
         self.file_tree.customContextMenuRequested.connect(self.customMenuEvent)
@@ -102,6 +103,8 @@ class FileTreeWidget(QWidget):
                 # If the auxiliary item already exists, update its shape
                 aux_item.setText(1, shape.__str__())
                 return
+        # enable root decoration if a auxiliary item is added
+        self.file_tree.setRootIsDecorated(True)
         # create a new item for the auxiliary data
         aux_item = pg.TreeWidgetItem([alias, shape.__str__()])
         item.addChild(aux_item)
@@ -312,12 +315,15 @@ class CIFTreeWidget(QWidget):
         super().__init__(parent)
         self.parent = parent
         self.files = []  # List to store CIF file paths
+
+        self.color_cycle = colors
         # Create a layout
         layout = QVBoxLayout(self)
         # Create a file tree view
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabels(['CIF file name'])
         self.file_tree.setSortingEnabled(False)
+        self.file_tree.setRootIsDecorated(False)
         self.file_tree.itemChanged.connect(self.itemChecked)
         self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
         layout.addWidget(self.file_tree)
@@ -345,7 +351,7 @@ class CIFTreeWidget(QWidget):
         item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
         item.setCheckState(0,QtCore.Qt.CheckState.Checked)
         # set the item color
-        item.setForeground(0, pg.mkColor(colors[::-1][len(self.files)-1 % len(colors)]))
+        item.setForeground(0, pg.mkColor(self.color_cycle[len(self.files)-1 % len(self.color_cycle)]))
         self.file_tree.addTopLevelItem(item)
         self.sigItemAdded.emit(file_path)
 
@@ -385,6 +391,19 @@ class CIFTreeWidget(QWidget):
         item = self.file_tree.topLevelItem(len(self.files) - 1)
         if item is not None:
             item.setToolTip(0, tooltip)
+
+    def set_color_cycle(self,color_cycle):
+        """Set the color cycle for the plot items."""
+        self.color_cycle = color_cycle
+        self._update_item_colors()
+
+    def _update_item_colors(self):
+        """Update the colors of the first column items based on the color cycle."""
+        for i in range(self.file_tree.topLevelItemCount()):
+            item = self.file_tree.topLevelItem(i)
+            color = QColor(self.color_cycle[i % len(self.color_cycle)])
+            item.setForeground(0, color)
+        
 
 if __name__ == "__main__":
     pass
