@@ -8,6 +8,7 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 """
 
+from operator import index
 import numpy as np
 from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
 from PyQt6 import QtCore
@@ -132,7 +133,11 @@ class HeatmapWidget(QWidget):
 
         # update the horizontal lines bounds
         for h_line in self.h_lines:
+            # disconnect the signal to avoid recursion
+            h_line.sigPositionChanged.disconnect(self.h_line_moved)
             h_line.setBounds([-1, self.n])
+            # reconnect the signal
+            h_line.sigPositionChanged.connect(self.h_line_moved)
 
     def _set_xticks(self,view=None,vrange=(None,None)):
         """Set the x-axis ticks. Called when the x-axis range is changed."""

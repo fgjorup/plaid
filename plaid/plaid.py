@@ -1236,7 +1236,6 @@ class MainWindow(QMainWindow):
         self.color_dialog.set_preview_data(y,x=x)
         self.color_dialog.show()
 
-
     def _update_color_cycle(self, color_cycle):
             self.color_cycle = color_cycle
             #self.color_cycle = self.color_dialog.get_colors()
@@ -1244,8 +1243,6 @@ class MainWindow(QMainWindow):
             self.pattern.set_color_cycle(self.color_cycle)
             self.auxiliary_plot.set_color_cycle(self.color_cycle)
             self.cif_tree.set_color_cycle(self.color_cycle[::-1]) # flip the cycle for the CIF tree
-
-
 
     def _save_dock_settings(self):
         """Save the dock widget settings."""
