@@ -681,7 +681,7 @@ class AuxiliaryPlotWidget(QWidget):
         for v_line in self.v_lines:
             self.plot_item.removeItem(v_line)
         self.v_lines = []
-        self.addVLine()
+        #self.addVLine()
 
 
 if __name__ == "__main__":

@@ -71,6 +71,7 @@ import plaid.resources
 # - add more tooltips
 
 ALLOW_EXPORT_ALL_PATTERNS = True
+PLOT_I0 = True
 
 colors = [
         '#AAAA00',  # Yellow
@@ -254,7 +255,7 @@ class MainWindow(QMainWindow):
 
         # add initial horizontal and vertical lines to the heatmap and auxiliary plot
         self.heatmap.addHLine()
-        self.auxiliary_plot.addVLine()
+        #self.auxiliary_plot.addVLine()
 
         # initialize the menu bar menus
         self._init_menu_bar()
@@ -519,7 +520,8 @@ class MainWindow(QMainWindow):
         self.pattern.set_pattern_name(name=f"frame {index}", index=len(self.pattern.pattern_items)-1)
 
         # add a vertical line to the auxiliary plot
-        self.auxiliary_plot.addVLine(pos=index)
+        if self.auxiliary_plot.n is not None:
+            self.auxiliary_plot.addVLine(pos=index)
 
     def remove_pattern(self, index):
         """
@@ -657,6 +659,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
             return
         
+        # clear the auxiliary plot and check for I0 and auxiliary data
+        self.auxiliary_plot.clear()  # Clear the previous plot
+        aux_plot_key = None
+
         # check if the azint_data already has I0 data from a nxmonitor dataset
         # and if so, set the I0 data of the corresponding aux_data. The I0 data
         # of the azint_data is overwritten in the next step, but this ensures that
@@ -669,25 +675,24 @@ class MainWindow(QMainWindow):
             I0 = self.aux_data[file_path[0]].get_data('I0')
             if I0 is not None:
                 self.azint_data.set_I0(I0)
+                aux_plot_key = file_path[0]
             
-
-        # clear the auxiliary plot and check for I0 and auxiliary data
-        self.auxiliary_plot.clear_plot()  # Clear the previous plot
         if item is not None and not isinstance(item, list): # for now, only handle a single item
             # check if the item has I0 data
             if item.toolTip(0) in self.aux_data:
                 I0 = self.aux_data[item.toolTip(0)].get_data('I0')
                 if I0 is not None:
                     self.azint_data.set_I0(I0)
-                if len(self.aux_data[item.toolTip(0)].keys()) > 1:
+                if len(self.aux_data[item.toolTip(0)].keys()) > 0:
                     # if there are more keys, plot the auxiliary data
-                    self.add_auxiliary_plot(item.toolTip(0))
+                    aux_plot_key = item.toolTip(0)
 
         elif isinstance(item, list):
             # check if grouped auxiliary data already exists
             group_path = ";".join([i.toolTip(0) for i in item])
             if group_path in self.aux_data:
                 aux_data = self.aux_data[group_path]
+           
             # if no grouped auxiliary data exists, but any of the items
             # have auxiliary data, append the data to the aux_data dict
             elif any(i.toolTip(0) in self.aux_data for i in item):
@@ -701,10 +706,14 @@ class MainWindow(QMainWindow):
                         if i.toolTip(0) in self.aux_data and alias in self.aux_data[i.toolTip(0)].keys():
                             data = np.append(data, self.aux_data[i.toolTip(0)].get_data(alias))
                         else:
-                            data = np.append(data, np.full((self.azint_data.shape[0],), np.nan))
+                            # get the shape of the filetree item
+                            _n = self.file_tree.get_item_shape(i)[0]
+                            data = np.append(data, np.full((_n,), np.nan))
                     self.aux_data[group_path].add_data(alias, data)
-                # disable I0 data (for now)
-                self.aux_data[group_path].I0 = None
+                I0 = self.aux_data[group_path].I0
+                if self.aux_data[group_path].I0 is not None:
+                    I0[np.isnan(I0)] = 1. # Replace NaN with 1
+                self.aux_data[group_path].set_I0(I0)
                 aux_data = self.aux_data[group_path]
             else:
                 aux_data = None
@@ -712,9 +721,9 @@ class MainWindow(QMainWindow):
                 I0 = aux_data.get_data('I0')
                 if I0 is not None:
                     self.azint_data.set_I0(I0)
-                if len(aux_data.keys()) > 1:
+                if len(aux_data.keys()) > 0:
                     # if there are more keys, plot the auxiliary data
-                    self.add_auxiliary_plot(group_path)
+                    aux_plot_key = group_path
         
         x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
         I = self.azint_data.get_I()
@@ -737,6 +746,9 @@ class MainWindow(QMainWindow):
         self.update_all_patterns()
         self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
+        if not aux_plot_key is None:
+            # if a selected item is provided, add the auxiliary plot for that item
+            self.add_auxiliary_plot(aux_plot_key)
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -930,14 +942,19 @@ class MainWindow(QMainWindow):
         if not selected_item in self.aux_data:
             QMessageBox.warning(self, "No Auxiliary Data", f"No auxiliary data available for {selected_item}.")
             return
-        self.auxiliary_plot.clear_plot()  # Clear the previous plot
+        #self.auxiliary_plot.clear_plot()  # Clear the previous plot
         for alias, data in self.aux_data[selected_item].get_dict().items():
-            if alias == 'I0':
+            if not PLOT_I0 and alias == 'I0':
                 # Skip I0 data for the auxiliary plot
                 continue
             if data is not None and data.ndim == 1:
                 # If the data is 1D, plot it directly
-                self.auxiliary_plot.set_data(data, label=alias)   
+                self.auxiliary_plot.set_data(data, label=alias)
+        # ensure that a v line exists for each h line in the heatmap
+        for i,pos in enumerate(self.heatmap.get_h_line_positions()):
+            if len(self.auxiliary_plot.v_lines) <= i:
+                self.auxiliary_plot.addVLine(pos=pos)
+            self.auxiliary_plot.set_v_line_pos(i, pos)
 
     def getQmax(self):
         """Get the maximum Q value of the current pattern"""

@@ -119,8 +119,7 @@ class FileTreeWidget(QWidget):
             return None
         # target_name = item.text(0)
         target_name = item.toolTip(0)  # Get the full file path as the target name
-        target_shape = item.text(1).replace('(', '').replace(')', '').replace(' ', '').split(',')
-        target_shape = tuple(int(dim) for dim in target_shape if dim.isdigit())
+        target_shape = self.get_item_shape(item)
         return target_name,target_shape  # Return the file name of the target item
 
     def get_aux_target_item(self):
@@ -132,6 +131,14 @@ class FileTreeWidget(QWidget):
         if item is None:
             return None
         return item
+
+    def get_item_shape(self,item):
+        """Get the shape of the specified item."""
+        if item is None:
+            return None
+        shape = item.text(1).replace('(', '').replace(')', '').replace(' ', '').split(',')
+        shape = tuple(int(dim) for dim in shape if dim.isdigit())
+        return shape
 
     def dragEnterEvent(self, event):
         """Handle drag enter event."""
