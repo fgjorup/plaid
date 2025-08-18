@@ -253,8 +253,12 @@ class FileTreeWidget(QWidget):
         # check if several items are selected
         selected_items = self.file_tree.selectedItems()
         if len(selected_items) > 1:
-            # create a context menu for the group of items
-            menu = self._mkGroupMenu(selected_items)
+            # check that all items have the same shape
+            if all(item.text(1) == selected_items[0].text(1) for item in selected_items):
+                # create a context menu for the group of items
+                menu = self._mkGroupMenu(selected_items)
+            else:
+                return  # Do not show menu if shapes are different
         else:
             # create a context menu for the item
             menu = self._mkMenu('toplevel',item)

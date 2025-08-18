@@ -537,7 +537,7 @@ class MainWindow(QMainWindow):
         clearing the azint_data and auxiliary plot if relevant.
         Called when a file is removed from the file tree.
         """
-        if file in self.azint_data.fnames:
+        if self.azint_data.fnames is not None and file in self.azint_data.fnames:
             self.azint_data = AzintData(self)
             self.heatmap.clear()
             self.pattern.clear()
@@ -703,15 +703,18 @@ class MainWindow(QMainWindow):
                 for alias in aliases:
                     data = np.array([])
                     for i in item:
+                        # get the shape of the filetree item
+                        _n = self.file_tree.get_item_shape(i)[0]
                         if i.toolTip(0) in self.aux_data and alias in self.aux_data[i.toolTip(0)].keys():
-                            data = np.append(data, self.aux_data[i.toolTip(0)].get_data(alias))
+                            _data = self.aux_data[i.toolTip(0)].get_data(alias)
                         else:
-                            # get the shape of the filetree item
-                            _n = self.file_tree.get_item_shape(i)[0]
-                            data = np.append(data, np.full((_n,), np.nan))
+                            _data = None
+                        if _data is None:
+                            _data = np.full((_n,), np.nan)  # Fill with NaN if no data is available
+                        data = np.append(data, _data)
                     self.aux_data[group_path].add_data(alias, data)
                 I0 = self.aux_data[group_path].I0
-                if self.aux_data[group_path].I0 is not None:
+                if I0 is not None:
                     I0[np.isnan(I0)] = 1. # Replace NaN with 1
                 self.aux_data[group_path].set_I0(I0)
                 aux_data = self.aux_data[group_path]
@@ -942,7 +945,7 @@ class MainWindow(QMainWindow):
         if not selected_item in self.aux_data:
             QMessageBox.warning(self, "No Auxiliary Data", f"No auxiliary data available for {selected_item}.")
             return
-        #self.auxiliary_plot.clear_plot()  # Clear the previous plot
+        self.auxiliary_plot.clear_plot()  # Clear the previous plot
         for alias, data in self.aux_data[selected_item].get_dict().items():
             if not PLOT_I0 and alias == 'I0':
                 # Skip I0 data for the auxiliary plot

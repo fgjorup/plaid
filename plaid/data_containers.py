@@ -77,13 +77,19 @@ class AzintData():
                 print("No valid load function found. Please provide a valid azimuthal integration file.")
                 return False
 
+        x = None
         I = np.array([[],[]])
         I_error = np.array([[],[]])
         for fname in self.fnames:
-            x, I_, I_error_, is_q, E = self._load_func(fname)
-            if x is None or I_ is None:
+            x_, I_, I_error_, is_q, E = self._load_func(fname)
+            if x_ is None or I_ is None:
                 print(f"Error loading data from {fname}.")
                 return False
+            if x is not None and x_.shape != x.shape:
+                print(f"Error: Inconsistent x shapes in {fname}.")
+                QMessageBox.critical(self.parent, "Error", f"Inconsistent x shapes in {fname}.")
+                return False
+            x = x_
             I = np.append(I, I_, axis=0) if I.size else I_
             if I_error_ is not None:
                 I_error = np.append(I_error, I_error_, axis=0) if I_error.size else I_error_
