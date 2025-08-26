@@ -381,7 +381,8 @@ class PatternWidget(QWidget):
         """Add a new pattern item to the plot."""
         color = self.color_cycle[len(self.pattern_items) % len(self.color_cycle)]
         pen = pg.mkPen(color=color, width=1)
-        pattern = pg.PlotDataItem(pen=pen, symbol='o',symbolSize=2, symbolPen=pen, symbolBrush=color, name='frame')
+        brush = pg.mkBrush(color=color)
+        pattern = pg.PlotDataItem(pen=pen, symbol='o',symbolSize=2, symbolPen=pen, symbolBrush=brush, name='frame')
         self.plot_widget.getPlotItem().addItem(pattern)
         self.pattern_items.append(pattern)
 
@@ -532,7 +533,10 @@ class PatternWidget(QWidget):
             pen = pattern.opts['pen']
             pen.setColor(color)
             pattern.setPen(pen)
-    
+            pattern.setSymbolPen(color)
+            pattern.setSymbolBrush(color)
+
+
     def _update_reference_colors(self):
         """Update the colors of the reference items based on the color cycle (reverse order)."""
         for i, reference_item in enumerate(self.reference_items):
