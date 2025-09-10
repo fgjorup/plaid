@@ -203,6 +203,17 @@ def _get_desktop_path():
         ctypes.windll.shell32.SHGetFolderPathW(None, 0x0000, None, 0, buf)  # 0x0000 = CSIDL_DESKTOP
         return os.path.abspath(buf.value)
 
+def _get_default_path():
+    """
+    Get a sensible default path for file dialogs.
+    returns the current working directory, unless it is the same as the script path,
+    in which case it returns the user's home directory.
+    """
+    default = os.getcwd()
+    if default == os.path.dirname(__file__):
+        default = os.path.expanduser("~")
+    return os.path.abspath(default)
+
 class MainWindow(QMainWindow):
     """plaid - Main application window for plotting azimuthally integrated data."""
     def __init__(self):
@@ -640,7 +651,8 @@ class MainWindow(QMainWindow):
             if self.file_tree.files and self.file_tree.files[-1] is not None:
                 default_dir = os.path.dirname(self.file_tree.files[-1])
             else:
-                default_dir = os.path.expanduser("~")
+                # default_dir = os.path.expanduser("~")
+                default_dir = _get_default_path()
             file_path, ok = QFileDialog.getOpenFileName(self, "Select Azimuthal Integration File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
             if not ok or not file_path:
                 return
@@ -801,7 +813,8 @@ class MainWindow(QMainWindow):
         if self.cif_tree.files and self.cif_tree.files[-1] is not None:
             default_dir = os.path.dirname(self.cif_tree.files[-1])
         else:
-            default_dir = os.path.expanduser("~")
+            # default_dir = os.path.expanduser("~")
+            default_dir = _get_default_path()
         file_path, ok = QFileDialog.getOpenFileName(self, "Select Crystallographic Information File", default_dir, "CIF Files (*.cif);;All Files (*)")
         if not ok or not file_path:
             return
@@ -1237,7 +1250,7 @@ class MainWindow(QMainWindow):
             self.heatmap.move_active_h_line(-delta)
 
         # # DEBUG
-        elif event.key() == QtCore.Qt.Key.Key_Space:            
+        elif event.key() == QtCore.Qt.Key.Key_Space:
             pass
 
     def show_color_cycle_dialog(self):
