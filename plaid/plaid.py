@@ -192,6 +192,16 @@ def clear_all_settings():
     settings.clear()
     print("All settings cleared.")
 
+def _get_desktop_path():
+    """Get the path to the user's desktop in a cross-platform way."""
+    if os.name != 'nt':
+        return os.path.join(os.path.expanduser("~"), "Desktop")
+    else:
+        import ctypes
+        from ctypes import wintypes
+        buf = ctypes.create_unicode_buffer(wintypes.MAX_PATH)
+        ctypes.windll.shell32.SHGetFolderPathW(None, 0x0000, None, 0, buf)  # 0x0000 = CSIDL_DESKTOP
+        return os.path.abspath(buf.value)
 
 class MainWindow(QMainWindow):
     """plaid - Main application window for plotting azimuthally integrated data."""
@@ -273,6 +283,7 @@ class MainWindow(QMainWindow):
 
         # Check for updates on startup (non-blocking)
         self._check_for_updates_on_startup()
+        self._check_if_first_run()
 
     def _init_file_tree(self):
         """Initialize the file tree widget. Called by self.__init__()."""
@@ -496,6 +507,13 @@ class MainWindow(QMainWindow):
         update_action.triggered.connect(self.check_for_updates_manual)
         update_action.setEnabled(HAS_UPDATE_CHECKER)  # Only enable if requests is available
         help_menu.addAction(update_action)
+
+        # Add action to create a desktop shortcut (Windows only)
+        if os.name == 'nt':
+            shortcut_action = QAction("Create &Desktop Shortcut", self)
+            shortcut_action.setToolTip("Create a desktop shortcut for plaid")
+            shortcut_action.triggered.connect(self.create_shortcut)
+            help_menu.addAction(shortcut_action)
         
         # Add separator
         help_menu.addSeparator()
@@ -1219,35 +1237,7 @@ class MainWindow(QMainWindow):
             self.heatmap.move_active_h_line(-delta)
 
         # # DEBUG
-        elif event.key() == QtCore.Qt.Key.Key_Space:
-            
-            # h5dialog = H5Dialog(self, self.azint_data.fnames[0])
-            # if h5dialog.exec_1d_2d_pair():
-            #     selected = h5dialog.get_selected_items()
-            #     axis = [item for item in selected if not "×" in item[2]][0]
-            #     signal = [item for item in selected if "×" in item[2]][0]
-            # print('axis:', axis)
-            # print('signal:', signal)
-            # fname = self.azint_data.fnames[0] 
-            # dialog = H5Dialog(self, fname)
-            # if not dialog.exec_1d_2d_pair():
-            #     print( None, None, None, None)
-
-            # selected = dialog.get_selected_items() # list of tuples with (alias, full_path, shape)
-            # axis = [item for item in selected if not "×" in item[2]][0] 
-            # signal = [item for item in selected if "×" in item[2]][0]
-            # # Check if the shape of the axis and signal match
-            # if not axis[2] in signal[2].split("×")[1]:
-            #     print(f"Error: The shape of the axis {axis[2]} does not match the shape of the signal {signal[2]}.")
-            #     print( None, None, None, None)
-            # with h5.File(fname, 'r') as f:
-            #     x = f[axis[1]][:]
-            #     I = f[signal[1]][:]
-            #     # attempt to guess if the axis is q or 2theta
-            #     is_q = 'q' in axis[0].lower() or 'q' in f[axis[1]].attrs.get('long_name', '').lower()
-            # print(x, I, is_q, None)
-            
-            # ## TEST COLORDIALOG
+        elif event.key() == QtCore.Qt.Key.Key_Space:            
             pass
 
     def show_color_cycle_dialog(self):
@@ -1431,6 +1421,96 @@ class MainWindow(QMainWindow):
         
         # Use QTimer to make it non-blocking
         QtCore.QTimer.singleShot(100, perform_check)
+
+    def _check_if_first_run(self):
+        """Check if this is the first run of the application."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        first_run = settings.value("first_run", True, type=bool)
+        if first_run:
+            def show_welcome_message():
+                # Show a welcome message and ask if the user wish to create a desktop shortcut
+                welcome_text = (
+                    "<h2>Welcome to plaid!</h2>"
+                    "<p>Thank you for using plaid - plot azimuthally integrated data.</p>"
+                    "<p>You can find help to some of the basic functionalities in the 'Help' menu.</p>"
+                )
+                if os.name == 'nt':  # Only ask for shortcut creation on Windows
+                    welcome_text += "<p>Do you wish to create a desktop shortcut?</p>"
+                    reply = QMessageBox.question(self, "Welcome", welcome_text)
+                    if reply == QMessageBox.StandardButton.Yes:
+                        self.create_shortcut()
+                else:
+                    QMessageBox.information(self, "Welcome", welcome_text)
+            # delay the welcome message by 1 second to avoid blocking startup
+            QtCore.QTimer.singleShot(1000, show_welcome_message)
+            # Set first_run to False for future runs
+            settings.setValue("first_run", False)
+
+    def create_ico_from_resource(self, target_path=None):
+        """
+        Save the application icon from Qt resources as an .ico file.
+        If target_path is None, saves to the directory containing plaid.py and resources.py.
+        Returns the path to the saved .ico file.
+        """
+        if target_path is None:
+            # Save to the same directory as this file (plaid.py)
+            base_dir = os.path.dirname(os.path.abspath(__file__))
+            target_path = os.path.join(base_dir, 'plaid.ico')
+        icon = QIcon(':/icons/plaid.png')
+        pixmap = icon.pixmap(256, 256)
+        pixmap.save(target_path, 'ICO')
+        return target_path
+
+    def create_shortcut(self):
+        """
+        Create a desktop shortcut to launch the application.
+        WINDOWS ONLY
+        """
+        if os.name != 'nt':
+            QMessageBox.warning(self, "Unsupported OS", "Shortcut creation is only supported on Windows.")
+            return
+        # Find the user's desktop path
+        shortcut_path = _get_desktop_path()
+        if not os.path.exists(shortcut_path):
+            # if the desktop path does not exist, prompt the user
+            # for a different location
+            shortcut_path = ""
+            shortcut_path = QFileDialog.getExistingDirectory(self, "Select Directory to Create Shortcut", os.path.expanduser("~"))
+            if not shortcut_path:
+                return
+            shortcut_path = os.path.abspath(shortcut_path)
+        shortcut_path = os.path.join(shortcut_path, 'Plaid.lnk')
+
+        # Find the current Python interpreter
+        python_exe = sys.executable
+
+        # Find the absolute path to plaid.py
+        plaid_py = os.path.abspath(__file__)
+
+        # Find the .ico file (use your create_ico_from_resource method)
+        ico_path = self.create_ico_from_resource()
+
+        # Set working directory to user profile
+        working_dir = os.environ['USERPROFILE']
+
+        # Compose PowerShell command to create the shortcut
+        powershell_cmd = (
+            f"$s=(New-Object -COM WScript.Shell).CreateShortcut('{shortcut_path}');"
+            f"$s.TargetPath='{python_exe}';"
+            f"$s.Arguments='\"{plaid_py}\"';"
+            f"$s.IconLocation='{ico_path}';"
+            f"$s.WorkingDirectory='{working_dir}';"
+            f"$s.WindowStyle=7;"  # 7 = Minimized
+            "$s.Save()"
+        )
+
+        # Run the command
+        os.system(f'powershell -NoProfile -Command "{powershell_cmd}"')
+
+        if os.path.exists(shortcut_path):
+            QMessageBox.information(self, "Shortcut Created", f"Shortcut created:\n{shortcut_path}")
+        else:
+            QMessageBox.critical(self, "Error", "Failed to create shortcut.")
 
     def show(self):
         """Override the show method to update the pattern geometry."""

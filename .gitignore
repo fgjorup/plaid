@@ -105,6 +105,7 @@ cython_debug/
 
 # Local resources
 resources/
+*.ico
 
 # virtual environment
 .venv*/
