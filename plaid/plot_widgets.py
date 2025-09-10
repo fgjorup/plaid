@@ -563,6 +563,7 @@ class AuxiliaryPlotWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.v_lines = []
+        self.plot_data_items = []
         self.n = None  # Number of data points in the x-axis
         self.color_cycle = colors
         # Create a layout
@@ -589,7 +590,8 @@ class AuxiliaryPlotWidget(QWidget):
         if color is None:
             color = self.color_cycle[len(self.plot_item.items) % len(self.color_cycle)]
         x = np.arange(len(y))
-        self.plot_item.plot(x, y, pen=color, name=label if label else 'Auxiliary Plot')
+        plot_data_item = self.plot_item.plot(x, y, pen=color, name=label if label else 'Auxiliary Plot')
+        self.plot_data_items.append(plot_data_item)
         self.n = len(y)
 
         # make sure the vlines are re-added if the plot has been cleared
@@ -664,6 +666,7 @@ class AuxiliaryPlotWidget(QWidget):
         """Set the color cycle for the plot items."""
         self.color_cycle = color_cycle
         self._update_line_colors()
+        self._update_plot_colors()
 
     def _update_line_colors(self):
         """Update the colors of the line items based on the color cycle."""
@@ -674,9 +677,16 @@ class AuxiliaryPlotWidget(QWidget):
             pen.setColor(color)
             line.setPen(pen)
 
+    def _update_plot_colors(self):
+        """Update the colors of the plot items based on the color cycle."""
+        for i, pdi in enumerate(self.plot_data_items):
+            color = QColor(self.color_cycle[i % len(self.color_cycle)])
+            pdi.setPen(color)
+
     def clear_plot(self):
         """Clear the auxiliary plot."""
         self.plot_item.clear()
+        self.plot_data_items = []
 
     def clear(self):
         """Clear the auxiliary plot and vertical lines."""

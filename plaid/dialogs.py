@@ -1003,14 +1003,4 @@ class ColorCycleDialog(QDialog):
 
 
 if __name__ == "__main__":
-    # TEST
-    # test the colordialog
-    import sys
-    from PyQt6.QtWidgets import QApplication
-    app = QApplication(sys.argv)
-    dialog = ColorCycleDialog()
-
-    # generate test data
-    y = np.random.rand(100)
-    dialog.set_preview_data(y)
-    dialog.exec()
+    pass
