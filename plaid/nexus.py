@@ -21,22 +21,65 @@ def get_nx_group(gr, name, nxclass=None):
             if "NX_class" in gr[key].attrs and gr[key].attrs["NX_class"] == nxclass:
                 return gr[key]
 
-def get_nx_entry(f):
-    """Get the entry nexus group from a nexus hdf5 instance."""
+def get_nx_entry(f,definition=None,allow_subentry=True):
+    """
+    Get the entry nexus group from a nexus hdf5 instance.
+    If a definition is given (e.g. 'NXazint1d'), return the entry or subentry
+    with the matching definition attribute. If no matching definition is found,
+    return None. If allow_subentry is True, also search for subentries.
+    If no definition is given, return the main entry or subentry (if allow_subentry is True).
+    """
+
+    def matching_definition(gr,definition):
+        """Check if the group has a matching definition attribute. Case insensitive."""
+        if 'definition' in gr:
+            entry_definition = gr['definition'][()]
+            if isinstance(entry_definition, bytes):
+                entry_definition = entry_definition.decode('utf-8')
+            if entry_definition.lower() == definition.lower():
+                return True
+        return False
+    
+    allowed_classes = ['NXentry', 'NXsubentry'] if allow_subentry else ['NXentry']
     if isinstance(f, h5.Group):
-        # If f is already a group, check if it is an entry
-        if 'NX_class' in f.attrs and f.attrs['NX_class'] == 'NXentry':
-            return f
-        # If f is a group, but not an entry, get the file from the group
-        # to start from the root
-        else:
-            f = f.file  # Get the file from the group
-    return get_nx_group(f, 'entry', 'NXentry')
+        # if f is already a group, check if it is an entry or subentry
+        if 'NX_class' in f.attrs and f.attrs['NX_class'] in allowed_classes:
+            # if a definition is given, check if it matches
+            if definition is None or matching_definition(f,definition):
+                return f
+        # if the group is not an entry or subentry with the correct definition
+        # or no definition was given, start from the root of the file
+        f = f.file
+    # if f is a file, get the entry group
+    entry = get_nx_group(f, 'entry', 'NXentry')
+    if entry is None:
+        return None
+    if definition is None or matching_definition(entry,definition):
+        return entry
+    if not allow_subentry:
+        return None
+    # check the nxentry for all nxsubentries and return the one with the correct definition
+    for key in entry.keys():
+        if "NX_class" in entry[key].attrs and entry[key].attrs["NX_class"] == "NXsubentry":
+            if matching_definition(entry[key],definition):
+                return entry[key]
+    # if no valid definition was found, use the group names as a fallback
+    for key in entry.keys():
+        if "NX_class" in entry[key].attrs and entry[key].attrs["NX_class"] == "NXsubentry":
+            if key.lower() in definition.lower():
+                return entry[key]
+    # else return None
+    return None
 
 def get_nx_monitor(gr):
     """Get the monitor nexus group from a nexus hdf5 file."""
     gr = get_nx_entry(gr)
     return get_nx_group(gr, 'monitor', 'NXmonitor')
+
+def get_nx_sample(gr):
+    """Get the sample nexus group from a nexus hdf5 file."""
+    gr = get_nx_entry(gr)
+    return get_nx_group(gr, 'sample', 'NXsample')
 
 def get_nx_instrument(gr):
     """Get the instrument nexus group from a nexus hdf5 file."""
