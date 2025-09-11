@@ -646,6 +646,7 @@ class ColorCycleDialog(QDialog):
         self.color_list.setDragDropMode(QTreeWidget.DragDropMode.NoDragDrop)  # Disable drag-and-drop
         self.color_list.itemSelectionChanged.connect(self._on_selection_changed)
         self.color_list.itemChanged.connect(self._on_item_changed)
+        self.color_list.itemDoubleClicked.connect(self._edit_color)
         left_layout.addWidget(self.color_list)
         
         # Color control buttons
