@@ -1595,9 +1595,6 @@ def main():
     splash = QSplashScreen(splash_pix)
     splash.show()
 
-    import time
-    time.sleep(0.5)  # Simulate a delay for loading
-
     # app.setStyle("Fusion")
     # get the application palette colors
     foreground_color = app.palette().text().color().darker(150).name()
