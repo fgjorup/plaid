@@ -120,6 +120,10 @@ def get_nx_signal(gr):
     """Get the signal nexus dset from a nexus group."""
     if gr is None:
         return None
+    if "NX_class" in gr.attrs and not gr.attrs["NX_class"] == "NXdata":
+        gr = get_nx_default(gr)
+    if gr is None:
+        return None
     if 'signal' in gr.attrs:
         signal = gr.attrs['signal']
         if signal in gr:
@@ -140,6 +144,10 @@ def get_nx_signal_errors(gr):
 
 def get_nx_axes(gr):
     """Get a list of the axes nexus dsets from a nexus group."""
+    if gr is None:
+        return []
+    if "NX_class" in gr.attrs and not gr.attrs["NX_class"] == "NXdata":
+        gr = get_nx_default(gr)
     if gr is None:
         return []
     axes = []
