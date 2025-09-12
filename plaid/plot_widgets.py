@@ -12,7 +12,7 @@ from operator import index
 import numpy as np
 from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
 from PyQt6 import QtCore
-from PyQt6.QtGui import QColor
+from PyQt6.QtGui import QColor, QTransform
 import pyqtgraph as pg
 
 colors = [
@@ -696,6 +696,65 @@ class AuxiliaryPlotWidget(QWidget):
             self.plot_item.removeItem(v_line)
         self.v_lines = []
         #self.addVLine()
+
+class CorrelationMapWidget(QWidget):
+    """
+    A widget to display a correlation map.
+    """
+    sigImageDoubleClicked = QtCore.pyqtSignal(object)  # Signal emitted when the image is double-clicked
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.fnames = []  # used to keep track of which dataset is used
+        self.n = None  # Number of data points in the x-axis
+        # Create a layout
+        layout = QHBoxLayout(self)
+
+        # Create a pyqtgraph PlotWidget
+        self.plot_widget = pg.PlotWidget()
+        layout.addWidget(self.plot_widget,1)
+
+        # Create a image item for the heatmap
+        self.image_item = pg.ImageItem()
+        self.plot_widget.addItem(self.image_item)
+        self.plot_widget.setLimits(minXRange=3)
+
+        tr = QTransform()
+        tr.translate(-0.5, -0.5)
+        self.image_item.setTransform(tr)       
+
+        self.x_axis = self.plot_widget.getPlotItem().getAxis('bottom')
+        self.y_axis = self.plot_widget.getPlotItem().getAxis('left')
+
+        self.x_axis.setLabel("frame number #")
+        self.y_axis.setLabel("frame number #")
+
+        # Create a histogram widget
+        self.histogram = pg.HistogramLUTWidget()
+        self.histogram.setImageItem(self.image_item)
+        self.histogram.item.gradient.loadPreset('viridis')
+        layout.addWidget(self.histogram,0)
+
+        self.plot_widget.getPlotItem().mouseDoubleClickEvent = self.image_double_clicked
+
+    def set_data(self, z):
+        """Set the data for the correlation map."""
+        if z is None:
+            return
+        # compute the correlation matrix
+        im = np.corrcoef(z)
+        self.image_item.setImage(im)
+        n = im.shape[0]
+        self.n = n
+        # update the limits of the plot
+        self.plot_widget.setLimits(xMin=-n*.1, xMax=n*1.1, yMin=-n*0.1, yMax=n*1.1)
+
+    def image_double_clicked(self, event):
+        """Handle the double click event on the image item."""
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self.n is not None:
+            pos = self.plot_widget.getPlotItem().vb.mapSceneToView(event.pos())
+            x = int(np.clip(pos.x()+0.5, 0, self.n - 1))
+            y = int(np.clip(pos.y()+0.5, 0, self.n - 1))
+            self.sigImageDoubleClicked.emit((x, y))
 
 
 if __name__ == "__main__":

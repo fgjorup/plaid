@@ -8,6 +8,7 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides the main application window for plotting azimuthally integrated data,
 including loading files, displaying heatmaps and patterns, and managing auxiliary data.
 """
+from operator import index
 import sys
 import os
 import numpy as np
@@ -35,7 +36,7 @@ if parent_dir not in sys.path:
 from plaid.trees import FileTreeWidget, CIFTreeWidget
 from plaid.dialogs import H5Dialog, ExportSettingsDialog, ColorCycleDialog
 from plaid.reference import Reference
-from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget
+from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget
 from plaid.misc import q_to_tth, tth_to_q
 from plaid.data_containers import AzintData, AuxData
 from plaid import __version__ as CURRENT_VERSION
@@ -69,6 +70,15 @@ import plaid.resources
 # - save additional settings like default path(s), dock widget positions, etc.
 # - optimize memory usage and performance for large datasets
 # - add more tooltips
+# - add a "reduction factor" option to reduce the effective time resolution of the data (I, I0, and aux data)
+# - add a "show auto-correlation map" option as a separate dock widget
+#    > Perhaps with an option to click a pixel in the correlation map and see the corresponding pattern(s)?
+# - add a "show map" option
+#    > show a map in a separate dock widget
+#    > change the line positions and pattern when a pixel is clicked
+#    > select roi in the pattern widget
+#    > get the pixel coordinates the an nxsample/nxtransformation group
+#      or ask the user to specify a rectangle shape
 
 ALLOW_EXPORT_ALL_PATTERNS = True
 PLOT_I0 = True
@@ -267,6 +277,7 @@ class MainWindow(QMainWindow):
         self._init_file_tree()
         self._init_cif_tree()
         self._init_auxiliary_plot()
+        self._init_correlation_map()
         # Add the dock widgets to the main window
         self._init_dock_widget_settings()
 
@@ -328,6 +339,19 @@ class MainWindow(QMainWindow):
         auxiliary_plot_dock.setWidget(self.auxiliary_plot)
         self.auxiliary_plot_dock = auxiliary_plot_dock
 
+    def _init_correlation_map(self):
+        """Initialize the correlation map widget. Called by self.__init__()."""
+        self.correlation_map = CorrelationMapWidget(self)
+        # create a dock widget for the correlation map
+        correlation_map_dock = QDockWidget("Auto-correlation Map", self)
+        correlation_map_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
+        correlation_map_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        correlation_map_dock.setWidget(self.correlation_map)
+        self.correlation_map_dock = correlation_map_dock
+        self.correlation_map_dock.setFloating(True)
+        # hide the correlation map dock by default
+        self.correlation_map_dock.hide()
+
     def _init_dock_widget_settings(self):
         """Initialize the dock widgets based on previously saved settings. Called by self.__init__()."""
         # get the current dock widget settings (if any)
@@ -349,6 +373,7 @@ class MainWindow(QMainWindow):
             self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.file_tree_dock)
             self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.cif_tree_dock)
             self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.auxiliary_plot_dock)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.correlation_map_dock)
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
 
     def _init_connections(self):
@@ -375,6 +400,9 @@ class MainWindow(QMainWindow):
         # Connect the auxiliary plot signals to the appropriate slots
         self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
         self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
+
+        self.correlation_map_dock.visibilityChanged.connect(self.update_correlation_map)
+        self.correlation_map.sigImageDoubleClicked.connect(self.correlation_map_double_clicked)
 
     def _init_menu_bar(self):
         """Initialize the menu bar with the necessary menus and actions. Called by self.__init__()."""
@@ -452,6 +480,11 @@ class MainWindow(QMainWindow):
         toggle_auxiliary_plot_action = self.auxiliary_plot_dock.toggleViewAction()
         toggle_auxiliary_plot_action.setText("Show &Auxiliary Plot")
         view_menu.addAction(toggle_auxiliary_plot_action)
+        # Add an action to toggle the correlation map visibility
+        toggle_correlation_map_action = self.correlation_map_dock.toggleViewAction()
+        toggle_correlation_map_action.setText("Show Auto-correlation &Map")
+        view_menu.addAction(toggle_correlation_map_action)
+
         # add a separator
         view_menu.addSeparator()
         # add a toggle Q action
@@ -782,6 +815,8 @@ class MainWindow(QMainWindow):
         if not aux_plot_key is None:
             # if a selected item is provided, add the auxiliary plot for that item
             self.add_auxiliary_plot(aux_plot_key)
+        
+        self.update_correlation_map(self.correlation_map_dock.isVisible())
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -1199,6 +1234,33 @@ class MainWindow(QMainWindow):
         # inform the user that the export is done
         QMessageBox.information(self, "Complete", f"Complete!\nExported {self.azint_data.shape[0]} patterns to:\n{directory}")
 
+    def update_correlation_map(self, is_checked):
+        """Update the correlation map when the correlation map checkbox is toggled."""
+        if is_checked and self.azint_data.I is not None:
+            # check if the correlation map is already calculated for the current data
+            if not self.azint_data.fnames == self.correlation_map.fnames:
+                self.correlation_map.set_data(self.azint_data.get_I())
+                self.correlation_map.fnames = self.azint_data.fnames
+
+    def correlation_map_double_clicked(self, pos):
+        """Handle double click events on the correlation map."""
+        if self.correlation_map.fnames:
+            # Get the index of the clicked position
+            x, y = pos
+
+            # Ensure that at least to horizontal lines exist in the heatmap
+            if len(self.heatmap.h_lines) < 2:
+                for i in range(2 - len(self.heatmap.h_lines)):
+                    self.add_pattern((0,i))
+
+            # move the last two horizontal and vertical lines to the selected positions
+            for i in range(2):
+                index = len(self.heatmap.h_lines) - 2 + i
+                self.update_pattern(index, pos[i])
+                self.heatmap.set_h_line_pos(index, pos[i])
+                self.auxiliary_plot.set_v_line_pos(index, pos[i])
+
+
     def dragEnterEvent(self, event):
         """Handle drag and drop events for the main window."""
         if event.mimeData().hasUrls():
@@ -1229,11 +1291,12 @@ class MainWindow(QMainWindow):
             x = self.heatmap.x
             # y = np.arange(I.shape[0])
             self.heatmap.set_data(x, I.T)
-
+        elif event.key() == QtCore.Qt.Key.Key_C:
+            # Show/hide the correlation map
+            self.correlation_map_dock.setVisible(not self.correlation_map_dock.isVisible())
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
             self.toggle_q()
-
         elif event.key() == QtCore.Qt.Key.Key_Up:
             # Move the selected line one increment up
             self.heatmap.move_active_h_line(1)
@@ -1274,6 +1337,7 @@ class MainWindow(QMainWindow):
         settings.beginGroup("DockWidgets")
         # Find all dock widgets and sort them by area
         dock_widgets = self.findChildren(QDockWidget)
+        dock_widgets = [dock for dock in dock_widgets if dock.windowTitle() in ['File Tree', 'CIF Tree', 'Auxiliary Plot']]
         left = [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.LeftDockWidgetArea]
         right = [dock for dock in dock_widgets if self.dockWidgetArea(dock) == QtCore.Qt.DockWidgetArea.RightDockWidgetArea]
         # Sort the dock widgets by their y position
