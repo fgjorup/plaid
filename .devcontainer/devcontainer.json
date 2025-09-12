@@ -1,7 +1,7 @@
 {
   "name": "Plaid Notebook Codespace",
   "image": "mcr.microsoft.com/devcontainers/python:3.11",
-  "postCreateCommand": "pip install -r requirements.txt",
+  "postCreateCommand": "pip install -r requirements.txt jupyter matplotlib",
   "customizations": {
     "vscode": {
       "extensions": [
