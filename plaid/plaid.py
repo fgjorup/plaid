@@ -12,8 +12,8 @@ import sys
 import os
 import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget,
-                             QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QCheckBox)
-from PyQt6.QtGui import QAction, QIcon
+                             QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QCheckBox, QSplashScreen)
+from PyQt6.QtGui import QAction, QIcon, QPixmap
 from PyQt6 import QtCore
 import pyqtgraph as pg
 import h5py as h5
@@ -1589,6 +1589,15 @@ def main():
 
     # Create the application and main window
     app = QApplication(sys.argv)
+
+    # Create and show the splash screen
+    splash_pix = QPixmap(":/icons/plaid.png")  # Use your resource or a file path
+    splash = QSplashScreen(splash_pix)
+    splash.show()
+
+    import time
+    time.sleep(0.5)  # Simulate a delay for loading
+
     # app.setStyle("Fusion")
     # get the application palette colors
     foreground_color = app.palette().text().color().darker(150).name()
@@ -1606,6 +1615,8 @@ def main():
             window.open_file(file)
     # show the main window
     window.show()
+    splash.finish(window)
+
     sys.exit(app.exec())
 
 if __name__ == "__main__":
