@@ -8,7 +8,7 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 """
 
-from operator import index
+#from operator import index
 import numpy as np
 from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
 from PyQt6 import QtCore
