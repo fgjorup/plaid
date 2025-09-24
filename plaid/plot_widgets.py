@@ -299,6 +299,30 @@ class HeatmapWidget(QWidget):
             pen.setColor(color)
             line.setPen(pen)
 
+    def updateBackground(self):
+        """
+        Update the background color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.plot_widget.setBackground('default')
+        self.histogram.setBackground('default')
+
+    def updateForeground(self):
+        """
+        Update the foreground color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.x_axis.setPen()
+        self.x_axis.setTextPen()
+        self.x_axis.setTickPen()
+        self.y_axis.setPen()
+        self.y_axis.setTextPen()
+        self.y_axis.setTickPen()
+
+        self.histogram.item.axis.setPen()
+        self.histogram.item.axis.setTextPen()
+        self.histogram.item.axis.setTickPen()
+
     def clear(self):
         """Clear the heatmap data and horizontal lines."""
         self.image_item.clear()
@@ -543,6 +567,34 @@ class PatternWidget(QWidget):
             color = QColor(self.color_cycle[::-1][i % len(self.color_cycle)])
             reference_item.setPen(color)
 
+    def updateBackground(self):
+        """
+        Update the background color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.plot_widget.setBackground('default')
+
+    def updateForeground(self):
+        """
+        Update the foreground color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        x_axis = self.plot_widget.getPlotItem().getAxis('bottom')
+        y_axis = self.plot_widget.getPlotItem().getAxis('left')
+
+        x_axis.setPen()
+        x_axis.setTextPen()
+        x_axis.setTickPen()
+        y_axis.setPen()
+        y_axis.setTextPen()
+        y_axis.setTickPen()
+
+        self.legend.setLabelTextColor(x_axis.textPen().color())
+        # workaround to set the legend text color
+        for _, item in self.legend.items:
+            text = item.text
+            item.setText(text, color=x_axis.textPen().color())
+        
     def clear(self):
         """Clear the pattern data"""
         for i in range(len(self.pattern_items)):
@@ -683,6 +735,33 @@ class AuxiliaryPlotWidget(QWidget):
             color = QColor(self.color_cycle[i % len(self.color_cycle)])
             pdi.setPen(color)
 
+    def updateBackground(self):
+        """
+        Update the background color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.plot_widget.setBackground('default')
+
+    def updateForeground(self):
+        """
+        Update the foreground color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        x_axis = self.plot_widget.getPlotItem().getAxis('bottom')
+        y_axis = self.plot_widget.getPlotItem().getAxis('left')
+        x_axis.setPen()
+        x_axis.setTextPen()
+        x_axis.setTickPen()
+        y_axis.setPen()
+        y_axis.setTextPen()
+        y_axis.setTickPen()
+
+        legend = self.plot_item.legend
+        for _, item in legend.items:
+            text = item.text
+            item.setText(text, color=x_axis.textPen().color())
+
+
     def clear_plot(self):
         """Clear the auxiliary plot."""
         self.plot_item.clear()
@@ -756,6 +835,29 @@ class CorrelationMapWidget(QWidget):
             y = int(np.clip(pos.y()+0.5, 0, self.n - 1))
             self.sigImageDoubleClicked.emit((x, y))
 
+    def updateBackground(self):
+        """
+        Update the background color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.plot_widget.setBackground('default')
+        self.histogram.setBackground('default')
+
+    def updateForeground(self):
+        """
+        Update the foreground color of the plot widget to the current default
+        from pyqtgraph configOptions.
+        """
+        self.x_axis.setPen()
+        self.x_axis.setTextPen()
+        self.x_axis.setTickPen()
+        self.y_axis.setPen()
+        self.y_axis.setTextPen()
+        self.y_axis.setTickPen()
+
+        self.histogram.item.axis.setPen()
+        self.histogram.item.axis.setTextPen()
+        self.histogram.item.axis.setTickPen()
 
 if __name__ == "__main__":
     pass

@@ -71,8 +71,6 @@ import plaid.resources
 # - optimize memory usage and performance for large datasets
 # - add more tooltips
 # - add a "reduction factor" option to reduce the effective time resolution of the data (I, I0, and aux data)
-# - add a "show auto-correlation map" option as a separate dock widget
-#    > Perhaps with an option to click a pixel in the correlation map and see the corresponding pattern(s)?
 # - add a "show map" option
 #    > show a map in a separate dock widget
 #    > change the line positions and pattern when a pixel is clicked
@@ -233,7 +231,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("")
         # Set the window icon
         self.setWindowIcon(QIcon(":/icons/plaid.png"))
-    
+
+        self.is_dark_mode = self._load_dark_mode_setting()
+        
         self.E = None  # Energy in keV
         self.is_Q = False # flag to indicate if the data is in Q space (True) or 2theta space (False)
 
@@ -302,6 +302,8 @@ class MainWindow(QMainWindow):
 
         # ensure color cycle is updated
         self._update_color_cycle(self.color_dialog.get_colors())
+
+        self.toggle_dark_mode(self.is_dark_mode)
 
         # Check for updates on startup (non-blocking)
         self._check_for_updates_on_startup()
@@ -500,6 +502,12 @@ class MainWindow(QMainWindow):
         change_color_cycle_action = QAction("&Change Color Cycle", self)
         change_color_cycle_action.triggered.connect(self.show_color_cycle_dialog)
         view_menu.addAction(change_color_cycle_action)
+        # add a toggle dark mode action
+        toggle_dark_mode_action = QAction("&Dark Mode", self)
+        toggle_dark_mode_action.setCheckable(True)
+        toggle_dark_mode_action.setChecked(self.is_dark_mode)
+        toggle_dark_mode_action.triggered.connect(self.toggle_dark_mode)
+        view_menu.addAction(toggle_dark_mode_action)
 
     def _init_export_menu(self, menu_bar):
         """Initialize the Export menu with actions to export patterns and settings. Called by self._init_menu_bar()."""
@@ -1236,6 +1244,10 @@ class MainWindow(QMainWindow):
 
     def update_correlation_map(self, is_checked):
         """Update the correlation map when the correlation map checkbox is toggled."""
+        # resize the correlation map dock
+        self.correlation_map_dock.resize(self.width()//2, self.height()//2)
+        # move the correlation map dock to the bottom right corner of the main window
+        self.correlation_map_dock.move(self.geometry().bottomRight() - self.correlation_map_dock.rect().bottomRight())
         if is_checked and self.azint_data.I is not None:
             # check if the correlation map is already calculated for the current data
             if not self.azint_data.fnames == self.correlation_map.fnames:
@@ -1392,6 +1404,24 @@ class MainWindow(QMainWindow):
         settings.beginGroup("ColorCycle")
         self.color_cycle = settings.value("colors", [], type=list)
         settings.endGroup()
+
+    def _save_dark_mode_setting(self):
+        """Save the dark mode setting."""
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("Appearance")
+        settings.setValue("dark_mode", self.is_dark_mode)
+        settings.endGroup()
+
+    def _load_dark_mode_setting(self):
+        """Load the dark mode setting."""
+        # get the system default dark mode setting
+        app = QApplication.instance()
+        system_default = app.styleHints().colorScheme() == QtCore.Qt.ColorScheme.Dark
+        settings = QtCore.QSettings("plaid", "plaid")
+        settings.beginGroup("Appearance")
+        dark_mode = settings.value("dark_mode", system_default, type=bool)
+        settings.endGroup()
+        return dark_mode
 
     def show_help_dialog(self):
         """Show the help dialog."""
@@ -1589,6 +1619,32 @@ class MainWindow(QMainWindow):
         else:
             QMessageBox.critical(self, "Error", "Failed to create shortcut.")
 
+    def toggle_dark_mode(self, is_checked):
+        """Toggle dark mode for the application."""
+        # get the application instance
+        app = QApplication.instance()
+        if is_checked:
+            app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Dark)
+            self.is_dark_mode = True
+        else:
+            app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Light)
+            self.is_dark_mode = False
+
+        foreground_color = app.palette().text().color().darker(150).name()
+        background_color = app.palette().window().color().darker(110).name()
+
+        pg.setConfigOption('foreground', foreground_color)
+        pg.setConfigOption('background', background_color)
+
+        self.heatmap.updateBackground()
+        self.heatmap.updateForeground()
+        self.pattern.updateBackground()
+        self.pattern.updateForeground()
+        self.auxiliary_plot.updateBackground()
+        self.auxiliary_plot.updateForeground()
+        self.correlation_map.updateBackground()
+        self.correlation_map.updateForeground()
+
     def show(self):
         """Override the show method to update the pattern geometry."""
         super().show()
@@ -1602,6 +1658,7 @@ class MainWindow(QMainWindow):
         save_recent_refs_settings(recent_refs)
         self._save_dock_settings()
         self._save_color_cycle()
+        self._save_dark_mode_setting()
         event.accept()
 
 def parse_args():
