@@ -929,16 +929,33 @@ class MainWindow(QMainWindow):
                 # of the azimuthal integration data (aname), assuming the
                 # structure */process/azint/*/*.h5 -> */raw/*/*.h5
 
-                # get the absolute directory of the azint file
-                adir = os.path.dirname(os.path.abspath(aname))
-                # look for the raw directory in both Windows and Unix style paths
-                if os.path.exists(adir.replace("\\process\\azint", "\\raw")):
-                    default_dir = adir.replace("\\process\\azint", "\\raw")
-                elif os.path.exists(adir.replace("/process/azint", "/raw")):
-                    default_dir = adir.replace("/process/azint", "/raw")
-                elif os.path.exists(adir):
-                    # if the default directory does not exist, use the directory of the azint file
-                    default_dir = adir
+                fname = os.path.abspath(aname)
+                fname = fname.replace("\\", "/")  # use forward slashes for consistency
+                fname = fname.replace("_pilatus_integrated.h5", ".h5")  # remove _pilatus_integrated if present (DanMAX default)
+                
+                # check if the corresponding raw file exists
+                if os.path.exists(fname.replace("/process/azint", "/raw")):
+                    default_dir = fname.replace("/process/azint", "/raw")
+                else:
+                    # check if the raw folder exists
+                    adir = os.path.dirname(fname)
+                    if os.path.exists(adir.replace("/process/azint", "/raw")):
+                        default_dir = adir.replace("/process/azint", "/raw")
+                    elif os.path.exists(adir):
+                        default_dir = adir
+                    else:
+                        default_dir = os.path.expanduser("~")
+                
+                # # get the absolute directory of the azint file
+                # adir = os.path.dirname(os.path.abspath(aname))
+                # # look for the raw directory in both Windows and Unix style paths
+                # if os.path.exists(adir.replace("\\process\\azint", "\\raw")):
+                #     default_dir = adir.replace("\\process\\azint", "\\raw")
+                # elif os.path.exists(adir.replace("/process/azint", "/raw")):
+                #     default_dir = adir.replace("/process/azint", "/raw")
+                # elif os.path.exists(adir):
+                #     # if the default directory does not exist, use the directory of the azint file
+                #     default_dir = adir
             else:
                 default_dir = os.path.expanduser("~")
             fname, ok = QFileDialog.getOpenFileName(self, "Select Auxiliary Data File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
@@ -1626,12 +1643,17 @@ class MainWindow(QMainWindow):
         if is_checked:
             app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Dark)
             self.is_dark_mode = True
+            _foreground_darker = 120
+            _background_darker = 110
         else:
             app.styleHints().setColorScheme(QtCore.Qt.ColorScheme.Light)
             self.is_dark_mode = False
+            _foreground_darker = 180
+            _background_darker = 103
 
-        foreground_color = app.palette().text().color().darker(150).name()
-        background_color = app.palette().window().color().darker(110).name()
+        QtCore.QCoreApplication.processEvents()
+        foreground_color = app.palette().text().color().darker(_foreground_darker).name()
+        background_color = app.palette().window().color().darker(_background_darker).name()
 
         pg.setConfigOption('foreground', foreground_color)
         pg.setConfigOption('background', background_color)
