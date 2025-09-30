@@ -945,17 +945,6 @@ class MainWindow(QMainWindow):
                         default_dir = adir
                     else:
                         default_dir = os.path.expanduser("~")
-                
-                # # get the absolute directory of the azint file
-                # adir = os.path.dirname(os.path.abspath(aname))
-                # # look for the raw directory in both Windows and Unix style paths
-                # if os.path.exists(adir.replace("\\process\\azint", "\\raw")):
-                #     default_dir = adir.replace("\\process\\azint", "\\raw")
-                # elif os.path.exists(adir.replace("/process/azint", "/raw")):
-                #     default_dir = adir.replace("/process/azint", "/raw")
-                # elif os.path.exists(adir):
-                #     # if the default directory does not exist, use the directory of the azint file
-                #     default_dir = adir
             else:
                 default_dir = os.path.expanduser("~")
             fname, ok = QFileDialog.getOpenFileName(self, "Select Auxiliary Data File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
