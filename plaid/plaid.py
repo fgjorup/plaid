@@ -36,8 +36,8 @@ if parent_dir not in sys.path:
 from plaid.trees import FileTreeWidget, CIFTreeWidget
 from plaid.dialogs import H5Dialog, ExportSettingsDialog, ColorCycleDialog
 from plaid.reference import Reference
-from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget
-from plaid.misc import q_to_tth, tth_to_q
+from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget, DiffractionMapWidget
+from plaid.misc import q_to_tth, tth_to_q, get_divisors
 from plaid.data_containers import AzintData, AuxData
 from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
@@ -77,6 +77,7 @@ import plaid.resources
 #    > select roi in the pattern widget
 #    > get the pixel coordinates the an nxsample/nxtransformation group
 #      or ask the user to specify a rectangle shape
+# - Crop data option? Perhaps save cropped .h5 copy?
 
 ALLOW_EXPORT_ALL_PATTERNS = True
 PLOT_I0 = True
@@ -278,6 +279,7 @@ class MainWindow(QMainWindow):
         self._init_cif_tree()
         self._init_auxiliary_plot()
         self._init_correlation_map()
+        self._init_diffraction_map()
         # Add the dock widgets to the main window
         self._init_dock_widget_settings()
 
@@ -354,6 +356,19 @@ class MainWindow(QMainWindow):
         # hide the correlation map dock by default
         self.correlation_map_dock.hide()
 
+    def _init_diffraction_map(self):
+        """Initialize the diffraction map widget. Called by self.__init__()."""
+        self.diffraction_map = DiffractionMapWidget(self)
+        # create a dock widget for the diffraction map
+        diffraction_map_dock = QDockWidget("Diffraction Map", self)
+        diffraction_map_dock.setAllowedAreas(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea | QtCore.Qt.DockWidgetArea.RightDockWidgetArea)
+        diffraction_map_dock.setFeatures(QDockWidget.DockWidgetFeature.DockWidgetMovable | QDockWidget.DockWidgetFeature.DockWidgetFloatable | QDockWidget.DockWidgetFeature.DockWidgetClosable)
+        diffraction_map_dock.setWidget(self.diffraction_map)
+        self.diffraction_map_dock = diffraction_map_dock
+        self.diffraction_map_dock.setFloating(True)
+        # hide the diffraction map dock by default
+        self.diffraction_map_dock.hide()
+
     def _init_dock_widget_settings(self):
         """Initialize the dock widgets based on previously saved settings. Called by self.__init__()."""
         # get the current dock widget settings (if any)
@@ -376,6 +391,7 @@ class MainWindow(QMainWindow):
             self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.cif_tree_dock)
             self.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.auxiliary_plot_dock)
         self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.correlation_map_dock)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.diffraction_map_dock)
         self.setDockOptions(QMainWindow.DockOption.AnimatedDocks)
 
     def _init_connections(self):
@@ -399,12 +415,16 @@ class MainWindow(QMainWindow):
         # Connect the pattern signals to the appropriate slots
         self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)
         self.pattern.sigPatternHovered.connect(self.update_status_bar)
+        self.pattern.sigLinearRegionChangedFinished.connect(self.linear_region_changed)
         # Connect the auxiliary plot signals to the appropriate slots
         self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
         self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
 
         self.correlation_map_dock.visibilityChanged.connect(self.update_correlation_map)
         self.correlation_map.sigImageDoubleClicked.connect(self.correlation_map_double_clicked)
+
+        self.diffraction_map_dock.visibilityChanged.connect(self.update_diffraction_map)
+        self.diffraction_map.sigImageDoubleClicked.connect(self.diffraction_map_double_clicked)
 
     def _init_menu_bar(self):
         """Initialize the menu bar with the necessary menus and actions. Called by self.__init__()."""
@@ -486,6 +506,10 @@ class MainWindow(QMainWindow):
         toggle_correlation_map_action = self.correlation_map_dock.toggleViewAction()
         toggle_correlation_map_action.setText("Show Auto-correlation &Map")
         view_menu.addAction(toggle_correlation_map_action)
+        # Add an action to toggle the diffraction map visibility
+        toggle_diffraction_map_action = self.diffraction_map_dock.toggleViewAction()
+        toggle_diffraction_map_action.setText("Show &Diffraction Map")
+        view_menu.addAction(toggle_diffraction_map_action)
 
         # add a separator
         view_menu.addSeparator()
@@ -825,6 +849,7 @@ class MainWindow(QMainWindow):
             self.add_auxiliary_plot(aux_plot_key)
         
         self.update_correlation_map(self.correlation_map_dock.isVisible())
+        #self.update_diffraction_map(self.diffraction_map_dock.isVisible())
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -1257,7 +1282,7 @@ class MainWindow(QMainWindow):
         if is_checked and self.azint_data.I is not None:
             # check if the correlation map is already calculated for the current data
             if not self.azint_data.fnames == self.correlation_map.fnames:
-                self.correlation_map.set_data(self.azint_data.get_I())
+                self.correlation_map.set_correlation_data(self.azint_data.get_I())
                 self.correlation_map.fnames = self.azint_data.fnames
 
     def correlation_map_double_clicked(self, pos):
@@ -1266,7 +1291,7 @@ class MainWindow(QMainWindow):
             # Get the index of the clicked position
             x, y = pos
 
-            # Ensure that at least to horizontal lines exist in the heatmap
+            # Ensure that at least two horizontal lines exist in the heatmap
             if len(self.heatmap.h_lines) < 2:
                 for i in range(2 - len(self.heatmap.h_lines)):
                     self.add_pattern((0,i))
@@ -1278,6 +1303,57 @@ class MainWindow(QMainWindow):
                 self.heatmap.set_h_line_pos(index, pos[i])
                 self.auxiliary_plot.set_v_line_pos(index, pos[i])
 
+    def diffraction_map_double_clicked(self, pos):
+        """Handle double click events on the diffraction map."""
+        if self.diffraction_map.fnames:
+            shape = self.diffraction_map.map_shape
+            # Get the index of the clicked position
+            # convert the (x,y) position to a linear index
+            n = np.ravel_multi_index(pos, shape)
+
+            # Ensure that at least one horizontal line exists in the heatmap
+            if len(self.heatmap.h_lines) < 1:
+                self.add_pattern((0,0))
+
+            # move the last horizontal and vertical lines to the selected positions
+            index = len(self.heatmap.h_lines) - 1
+            self.update_pattern(index, n)
+            self.heatmap.set_h_line_pos(index, n)
+            self.auxiliary_plot.set_v_line_pos(index, n)
+
+    def update_diffraction_map(self, is_checked):
+        """Update the diffraction map when the diffraction map checkbox is toggled."""
+        # resize the diffraction map dock
+        self.diffraction_map_dock.resize(self.width()//2, self.height()//2)
+        # move the diffraction map dock to the bottom right corner of the main window
+        self.diffraction_map_dock.move(self.geometry().bottomRight() - self.diffraction_map_dock.rect().bottomRight())
+        # toggle the linear region box in the pattern plot
+        self.pattern.show_linear_region_box(is_checked)
+        if not is_checked or self.azint_data.I is None or self.azint_data.shape[0] <= 1:
+            return
+        
+        # use the fnames attribute to check if the diffraction map
+        # is already initialized for the current azint data
+        if self.diffraction_map.fnames != self.azint_data.fnames:
+            # get the viable map shapes
+            divisors = get_divisors(self.azint_data.shape[0])[::-1]
+            self.diffraction_map.set_map_shape_options(divisors)
+            self.diffraction_map.fnames = self.azint_data.fnames
+
+        roi = self.pattern.get_linear_region_roi()
+        z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+        self.diffraction_map.set_diffraction_data(z)
+
+
+    def linear_region_changed(self,roi):
+        """Handle changes to the linear region in the pattern plot."""
+        if self.diffraction_map_dock.isVisible() and self.azint_data.I is not None and self.azint_data.shape[0] > 1:
+            if np.sum(roi) == 0:
+                z = np.zeros(self.azint_data.shape[0])
+            else:
+                z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+            self.diffraction_map.set_diffraction_data(z)
+        
 
     def dragEnterEvent(self, event):
         """Handle drag and drop events for the main window."""
@@ -1312,6 +1388,9 @@ class MainWindow(QMainWindow):
         elif event.key() == QtCore.Qt.Key.Key_C:
             # Show/hide the correlation map
             self.correlation_map_dock.setVisible(not self.correlation_map_dock.isVisible())
+        elif event.key() == QtCore.Qt.Key.Key_M:
+            # Show/hide the diffraction map
+            self.diffraction_map_dock.setVisible(not self.diffraction_map_dock.isVisible())
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
             self.toggle_q()
@@ -1332,6 +1411,43 @@ class MainWindow(QMainWindow):
 
         # # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
+            
+            def get_divisors(x):
+                divisors = []
+                for i in range(1,int(x**0.5)+1):
+                    if x%i == 0:
+                        divisors.append(i)
+                        divisors.append(x//i)
+                return sorted(list(divisors))
+
+            self.pattern.show_linear_region_box(True)
+            roi = self.pattern.get_linear_region_roi()
+            
+            if self.azint_data.I is None:
+                return
+            
+            im = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+            im = im.reshape((66,87))  # hardcoded for now, should be set by the user
+
+            # test nan handling
+            im[im<0.08] = np.nan
+
+            # simulate "snake" scan
+            im[1::2,:] = im[1::2,::-1]
+
+            z = im.flatten()
+            
+            #z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+
+            divisors = get_divisors(len(z))[::-1]
+
+            self.diffraction_map.set_map_shape_options(divisors)
+
+            #self.diffraction_map.set_map_shape([66,87]) 
+            self.diffraction_map.set_diffraction_data(z)
+            self.diffraction_map.fnames = self.azint_data.fnames
+            self.diffraction_map_dock.setVisible(True)
+
             pass
 
     def show_color_cycle_dialog(self):
@@ -1655,6 +1771,8 @@ class MainWindow(QMainWindow):
         self.auxiliary_plot.updateForeground()
         self.correlation_map.updateBackground()
         self.correlation_map.updateForeground()
+        self.diffraction_map.updateBackground()
+        self.diffraction_map.updateForeground()
 
     def show(self):
         """Override the show method to update the pattern geometry."""

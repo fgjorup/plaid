@@ -10,7 +10,7 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 
 #from operator import index
 import numpy as np
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox, QDoubleSpinBox, QCheckBox
 from PyQt6 import QtCore
 from PyQt6.QtGui import QColor, QTransform
 import pyqtgraph as pg
@@ -344,6 +344,7 @@ class PatternWidget(QWidget):
     """
     sigXRangeChanged = QtCore.pyqtSignal(object)
     sigPatternHovered = QtCore.pyqtSignal(object)
+    sigLinearRegionChangedFinished = QtCore.pyqtSignal(object)
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -361,6 +362,18 @@ class PatternWidget(QWidget):
         # Create a pyqtgraph PlotWidget
         self.plot_widget = pg.PlotWidget()
         layout.addWidget(self.plot_widget,1)
+
+        # add a moveable LinearRegionItem for selecting x-range
+        self.lr = pg.LinearRegionItem(values=[-2, -1], 
+                                      orientation="vertical",
+                                      brush="#AAAA0050",
+                                      hoverBrush="#AAAA0080",
+                                      pen="#0000AAAA"
+                                      )
+        self.lr.sigRegionChangeFinished.connect(lambda: self.sigLinearRegionChangedFinished.emit(self.get_linear_region_roi()))
+        
+        self.plot_widget.addItem(self.lr)
+        self.lr.setVisible(False)  # Hide the LinearRegionItem by default
 
         # create a plot item for the average pattern
         self.avg_pattern_item = pg.PlotDataItem(pen='#AAAAAA', name='Average Pattern')
@@ -385,6 +398,7 @@ class PatternWidget(QWidget):
 
         self.set_xlabel("radial axis")
         self.set_ylabel("intensity")
+
 
         # add a toolbar to the widget
         # Possible actions?
@@ -432,6 +446,7 @@ class PatternWidget(QWidget):
         self.plot_widget.setLimits(xMin=np.min(x)-x_pad, xMax=np.max(x)+x_pad)
         self.x = x
         self.y = y
+
 
     def set_pattern_name(self, name=None, index=-1):
         """Set the name of the pattern item."""
@@ -525,6 +540,33 @@ class PatternWidget(QWidget):
     def xrange_changed(self,vb, x_range):
         """Handle the x-axis range change."""
         self.sigXRangeChanged.emit(x_range)
+
+    def show_linear_region_box(self, show=True):
+        """Show or hide the linear region box."""
+        # make sure the linear region box is within the x data range
+        if self.x is not None and len(self.x) > 1:
+            x_min, x_max = self.lr.getRegion()
+
+            if x_min < self.x[0] and x_max < self.x[0] or x_min > self.x[-1] and x_max > self.x[-1]:
+                # if the linear region box is completely outside the x data range, reset the range
+                # to around the center of the x data range
+                center = (self.x[0] + self.x[-1]) / 2
+                width = (self.x[-1] - self.x[0]) / 10
+                self.lr.setRegion([center - width / 2, center + width / 2])
+            else:
+                # otherwise, clip the linear region box to be within the x data range
+                self.lr.setRegion([np.clip(x_min,self.x[0],self.x[-10]),
+                                   np.clip(x_max,self.x[10],self.x[-1])])
+        self.lr.setVisible(show)
+
+    def get_linear_region_roi(self):
+        """Get the current roi boolean mask of the linear region box."""
+        if not self.lr.isVisible() or self.x is None:
+            return None
+        x_min, x_max = self.lr.getRegion()
+        # convert the x_range to indices
+        roi = (self.x >= x_min) & (self.x <= x_max)
+        return roi
 
     def hover_event(self, event):
         """Handle the hover event on the plot item."""
@@ -776,26 +818,44 @@ class AuxiliaryPlotWidget(QWidget):
         self.v_lines = []
         #self.addVLine()
 
-class CorrelationMapWidget(QWidget):
+class BasicMapWidget(QWidget):
     """
-    A widget to display a correlation map.
+    A widget to display a basic map.
     """
     sigImageDoubleClicked = QtCore.pyqtSignal(object)  # Signal emitted when the image is double-clicked
     def __init__(self, parent=None):
         super().__init__(parent)
         self.fnames = []  # used to keep track of which dataset is used
-        self.n = None  # Number of data points in the x-axis
         # Create a layout
-        layout = QHBoxLayout(self)
+        vlayout = QVBoxLayout(self)
+
+        self.toolbar = QToolBar(self)
+        self.toolbar.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.toolbar.setFloatable(False)
+        self.toolbar.setMovable(False)
+        self.toolbar.setHidden(True)
+        vlayout.addWidget(self.toolbar)
+
+        self.layout = QHBoxLayout()
+        vlayout.addLayout(self.layout)
 
         # Create a pyqtgraph PlotWidget
         self.plot_widget = pg.PlotWidget()
-        layout.addWidget(self.plot_widget,1)
+        self.layout.addWidget(self.plot_widget,1)
 
         # Create a image item for the heatmap
         self.image_item = pg.ImageItem()
         self.plot_widget.addItem(self.image_item)
         self.plot_widget.setLimits(minXRange=3)
+
+        # create a cursor plus symbol at the center of the image
+        self.cursor = pg.ScatterPlotItem(size=1.0, 
+                                         pen=pg.mkPen((255, 255, 255, 128), width=2), 
+                                         brush=pg.mkBrush(None), 
+                                         symbol='s', # square symbol
+                                         pxMode=False)
+        
+        self.plot_widget.addItem(self.cursor)
 
         tr = QTransform()
         tr.translate(-0.5, -0.5)
@@ -804,36 +864,42 @@ class CorrelationMapWidget(QWidget):
         self.x_axis = self.plot_widget.getPlotItem().getAxis('bottom')
         self.y_axis = self.plot_widget.getPlotItem().getAxis('left')
 
-        self.x_axis.setLabel("frame number #")
-        self.y_axis.setLabel("frame number #")
-
         # Create a histogram widget
         self.histogram = pg.HistogramLUTWidget()
         self.histogram.setImageItem(self.image_item)
         self.histogram.item.gradient.loadPreset('viridis')
-        layout.addWidget(self.histogram,0)
+        self.layout.addWidget(self.histogram,0)
 
         self.plot_widget.getPlotItem().mouseDoubleClickEvent = self.image_double_clicked
 
-    def set_data(self, z):
-        """Set the data for the correlation map."""
-        if z is None:
+    def set_data(self, im):
+        """Set the data for the map."""
+        if im is None:
             return
-        # compute the correlation matrix
-        im = np.corrcoef(z)
         self.image_item.setImage(im)
-        n = im.shape[0]
-        self.n = n
-        # update the limits of the plot
-        self.plot_widget.setLimits(xMin=-n*.1, xMax=n*1.1, yMin=-n*0.1, yMax=n*1.1)
 
     def image_double_clicked(self, event):
         """Handle the double click event on the image item."""
-        if event.button() == QtCore.Qt.MouseButton.LeftButton and self.n is not None:
+        if event.button() == QtCore.Qt.MouseButton.LeftButton and self.image_item.image is not None:
+            event.accept()
+            shape = self.image_item.image.shape
             pos = self.plot_widget.getPlotItem().vb.mapSceneToView(event.pos())
-            x = int(np.clip(pos.x()+0.5, 0, self.n - 1))
-            y = int(np.clip(pos.y()+0.5, 0, self.n - 1))
-            self.sigImageDoubleClicked.emit((x, y))
+            x, y = int(pos.x()+0.5), int(pos.y()+0.5)
+            # ignore clicks outside the image area or on nan values
+            if x < 0 or x >= shape[0] or y < 0 or y >= shape[1] \
+            or np.isnan(self.image_item.image[x, y]):
+                self.hide_cursor()
+            else:
+                self.move_cursor(x, y)
+                self.sigImageDoubleClicked.emit((x, y))
+    
+    def move_cursor(self, x, y):
+        """Move the cursor to the specified position."""
+        self.cursor.setData(x=[x], y=[y])
+
+    def hide_cursor(self):
+        """Hide the cursor."""
+        self.cursor.setData(x=[], y=[])
 
     def updateBackground(self):
         """
@@ -858,6 +924,136 @@ class CorrelationMapWidget(QWidget):
         self.histogram.item.axis.setPen()
         self.histogram.item.axis.setTextPen()
         self.histogram.item.axis.setTickPen()
+
+    def autoRange(self):
+        """Auto range the plot to fit the image."""
+        self.plot_widget.autoRange()
+
+class CorrelationMapWidget(BasicMapWidget):
+    """
+    A widget to display a correlation map. Inherits from BasicMapWidget.
+    """
+    sigImageDoubleClicked = QtCore.pyqtSignal(object)  # Signal emitted when the image is double-clicked
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.n = None  # Number of data points in the x-axis
+        self.x_axis.setLabel("frame number #")
+        self.y_axis.setLabel("frame number #")
+
+    def set_correlation_data(self, z):
+        """Set the data for the correlation map."""
+        if z is None:
+            return
+        # compute the correlation matrix
+        im = np.corrcoef(z)
+        self.set_data(im)
+
+        n = im.shape[0]
+        self.n = n
+        # update the limits of the plot
+        self.plot_widget.setLimits(xMin=-n*.1, xMax=n*1.1, yMin=-n*0.1, yMax=n*1.1)
+
+
+class DiffractionMapWidget(BasicMapWidget):
+    """
+    A widget to display a diffraction map. Inherits from BasicMapWidget.
+    """
+
+    def __init__(self, parent=None,map_shape_options=None):
+        super().__init__(parent)
+
+        self.map_shape = None
+        self.z = None
+        self.is_snake = False
+
+        self.toolbar.setHidden(False)
+
+        # create a "map shape" combo box
+        self.map_shape_combo = QComboBox(self)
+        self.map_shape_combo.setToolTip("Select the shape of the diffraction map")
+        self.map_shape_combo.activated.connect(self.map_shape_changed)
+
+        self.toolbar.addWidget(QLabel("Map shape: "))
+        self.toolbar.addWidget(self.map_shape_combo)
+
+        # create an aspect ratio double spin box
+        self.aspect_ratio_spin = QDoubleSpinBox(self)
+        self.aspect_ratio_spin.setToolTip("Set the pixel aspect ratio (width/height)")
+        self.aspect_ratio_spin.setRange(0.1, 10.0)
+        self.aspect_ratio_spin.setSingleStep(0.1)
+        self.aspect_ratio_spin.setValue(1.0)
+        self.aspect_ratio_spin.valueChanged.connect(self.update_aspect_ratio)
+        self.toolbar.addWidget(QLabel("Pixel aspect ratio: "))
+        self.toolbar.addWidget(self.aspect_ratio_spin)
+
+        # create a "flip alternate rows" checkbox
+        self.flip_rows_check = QCheckBox("Snake", self)
+        self.flip_rows_check.setToolTip("Flip alternate rows for snake-like scanning")
+        self.flip_rows_check.setChecked(self.is_snake)
+        self.flip_rows_check.checkStateChanged.connect(self.update_map)
+        self.toolbar.addWidget(self.flip_rows_check)
+
+
+        self.x_axis.setLabel("x-axis (px)")
+        self.y_axis.setLabel("y-axis (px)")
+
+        self.set_map_shape_options(map_shape_options)
+
+        self.update_aspect_ratio()
+
+
+    def set_diffraction_data(self, z):
+        """
+        Set the data for the diffraction map. Takes a 1D array and
+        reshapes it into a square 2D array for display.
+        """
+        if z is None or self.map_shape is None:
+            return
+        if len(z) != np.prod(self.map_shape):
+            raise ValueError("The length of z does not match the product of map_shape.")
+        self.z = z
+        self.update_map()
+
+    def update_map(self):
+        """Update the diffraction map with the current data and shape."""
+        if self.z is None or self.map_shape is None:
+            return
+        im = self.z.reshape(self.map_shape)
+        if self.flip_rows_check.isChecked() != self.is_snake:
+            im[1::2] = im[1::2, ::-1]
+            self.is_snake = self.flip_rows_check.isChecked()
+        self.set_data(im)
+        self.autoRange()
+
+    def set_map_shape_options(self, options):
+        """Set the options for the map shape combo boxes. Options should be a list of integers."""
+        self.map_shape_combo.clear()
+
+        if not options:
+            return
+        for i in range(len(options)):
+            shape_0 = options[i]
+            shape_1 = options[-(i + 1)]
+            self.map_shape_combo.addItem(f"{shape_0} × {shape_1}", (shape_0,shape_1))
+        
+        self.map_shape_combo.setCurrentIndex(len(options)//2)
+        self.map_shape = self.map_shape_combo.itemData(self.map_shape_combo.currentIndex())
+
+    def map_shape_changed(self, index):
+        """Handle the change of the map shape combo box."""
+        shape = self.map_shape_combo.itemData(index)
+        if shape:
+            self.map_shape = shape
+            self.update_map()
+
+    def update_aspect_ratio(self):
+        """Update the aspect ratio of the diffraction map."""
+        aspect_ratio = self.aspect_ratio_spin.value()
+        self.plot_widget.getPlotItem().setAspectLocked(lock=True, ratio=aspect_ratio)
+
+
+    
+
 
 if __name__ == "__main__":
     pass
