@@ -17,7 +17,6 @@ from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_signal_errors, ge
 from plaid.misc import q_to_tth, tth_to_q
 from plaid.dialogs import H5Dialog
 
-
 class AzintData():
     """
     A class to hold azimuthal integration data.
@@ -52,6 +51,8 @@ class AzintData():
         self.instrument_name = None  # Name of the instrument, if available
         self.source_name = None  # Name of the source, if available
         self._load_func = None
+        self.map_shape = None  # Shape of the loaded data files used for mapping (PLACEHOLDER)
+        self.map_indices = None  # Indices of the loaded data files used for mapping (PLACEHOLDER)
 
         #self.aux_data = {} # {alias: np.array}
 

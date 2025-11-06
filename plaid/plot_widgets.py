@@ -10,7 +10,7 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 
 #from operator import index
 import numpy as np
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox, QDoubleSpinBox, QCheckBox
+from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox, QDoubleSpinBox, QCheckBox, QSizePolicy
 from PyQt6 import QtCore
 from PyQt6.QtGui import QColor, QTransform
 import pyqtgraph as pg
@@ -971,6 +971,7 @@ class DiffractionMapWidget(BasicMapWidget):
         # create a "map shape" combo box
         self.map_shape_combo = QComboBox(self)
         self.map_shape_combo.setToolTip("Select the shape of the diffraction map")
+        self.map_shape_combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.map_shape_combo.activated.connect(self.map_shape_changed)
 
         self.toolbar.addWidget(QLabel("Map shape: "))

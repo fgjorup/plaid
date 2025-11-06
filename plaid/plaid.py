@@ -76,7 +76,7 @@ import plaid.resources
 #    > change the line positions and pattern when a pixel is clicked
 #    > select roi in the pattern widget
 #    > get the pixel coordinates the an nxsample/nxtransformation group
-#      or ask the user to specify a rectangle shape
+#      or ask the user to specify a rectangle shape - Implement map_shape and map_indices in AzintData
 # - Crop data option? Perhaps save cropped .h5 copy?
 
 ALLOW_EXPORT_ALL_PATTERNS = True
@@ -616,6 +616,8 @@ class MainWindow(QMainWindow):
         # add a vertical line to the auxiliary plot
         if self.auxiliary_plot.n is not None:
             self.auxiliary_plot.addVLine(pos=index)
+        # update the map cursor position
+        self.update_map_cursor(index)
 
     def remove_pattern(self, index):
         """
@@ -854,12 +856,15 @@ class MainWindow(QMainWindow):
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
         self.update_pattern(index, pos)
+        self.update_map_cursor(pos)
         self.auxiliary_plot.set_v_line_pos(index, pos)
+
 
     def vline_moved(self, index, pos):
         """Handle the vertical line movement in the auxiliary plot."""
         pos = int(np.clip(pos, 0, self.azint_data.shape[0]-1))
         self.update_pattern(index, pos)
+        self.update_map_cursor(pos)
         self.heatmap.set_h_line_pos(index, pos)
 
     def update_pattern(self, index, pos):
@@ -869,6 +874,15 @@ class MainWindow(QMainWindow):
         y = self.azint_data.get_I(index=pos)
         self.pattern.set_data(y=y, index=index)
         self.pattern.set_pattern_name(name=f"frame {pos}", index=index)
+
+    def update_map_cursor(self, pos):
+        """Update the map cursors in the correlation and diffraction maps."""
+        # update the diffraction map cursor, if visible
+        if self.diffraction_map_dock.isVisible() and self.diffraction_map.map_shape is not None:
+            if self.azint_data.map_indices is not None:
+                pos = self.azint_data.map_indices[pos]
+            x,y = np.unravel_index(pos,self.diffraction_map.map_shape)    
+            self.diffraction_map.move_cursor(x,y)
 
     def update_all_patterns(self):
         """Update all patterns with the current data. Called when a new file is (re)loaded."""
@@ -1310,6 +1324,11 @@ class MainWindow(QMainWindow):
             # Get the index of the clicked position
             # convert the (x,y) position to a linear index
             n = np.ravel_multi_index(pos, shape)
+            
+            # check if the azint_data has map_indices defined
+            # and convert the linear index accordingly
+            if self.azint_data.map_indices is not None:
+                n = self.azint_data.map_indices.index(n)
 
             # Ensure that at least one horizontal line exists in the heatmap
             if len(self.heatmap.h_lines) < 1:
@@ -1335,13 +1354,23 @@ class MainWindow(QMainWindow):
         # use the fnames attribute to check if the diffraction map
         # is already initialized for the current azint data
         if self.diffraction_map.fnames != self.azint_data.fnames:
-            # get the viable map shapes
-            divisors = get_divisors(self.azint_data.shape[0])[::-1]
-            self.diffraction_map.set_map_shape_options(divisors)
+            if self.azint_data.map_shape is None:
+                # if no map shape is defined in the loaded data,
+                # get the viable map shapes
+                divisors = get_divisors(self.azint_data.shape[0])[::-1]
+                self.diffraction_map.set_map_shape_options(divisors)
+            else:
+                self.diffraction_map.set_map_shape_options([self.azint_data.map_shape[0],])
             self.diffraction_map.fnames = self.azint_data.fnames
 
         roi = self.pattern.get_linear_region_roi()
-        z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+        
+        if self.azint_data.map_indices is None:
+            z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+        else:
+            z = np.full((np.prod(self.azint_data.map_shape),), np.nan)
+            z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+
         self.diffraction_map.set_diffraction_data(z)
 
 
@@ -1412,41 +1441,41 @@ class MainWindow(QMainWindow):
         # # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
             
-            def get_divisors(x):
-                divisors = []
-                for i in range(1,int(x**0.5)+1):
-                    if x%i == 0:
-                        divisors.append(i)
-                        divisors.append(x//i)
-                return sorted(list(divisors))
+            # def get_divisors(x):
+            #     divisors = []
+            #     for i in range(1,int(x**0.5)+1):
+            #         if x%i == 0:
+            #             divisors.append(i)
+            #             divisors.append(x//i)
+            #     return sorted(list(divisors))
 
-            self.pattern.show_linear_region_box(True)
-            roi = self.pattern.get_linear_region_roi()
+            # self.pattern.show_linear_region_box(True)
+            # roi = self.pattern.get_linear_region_roi()
             
-            if self.azint_data.I is None:
-                return
+            # if self.azint_data.I is None:
+            #     return
             
-            im = np.mean(self.azint_data.get_I()[:, roi],axis=1)
-            im = im.reshape((66,87))  # hardcoded for now, should be set by the user
+            # im = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+            # im = im.reshape((66,87))  # hardcoded for now, should be set by the user
 
-            # test nan handling
-            im[im<0.08] = np.nan
+            # # test nan handling
+            # im[im<0.08] = np.nan
 
-            # simulate "snake" scan
-            im[1::2,:] = im[1::2,::-1]
+            # # simulate "snake" scan
+            # im[1::2,:] = im[1::2,::-1]
 
-            z = im.flatten()
+            # z = im.flatten()
             
-            #z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+            # #z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
 
-            divisors = get_divisors(len(z))[::-1]
+            # divisors = get_divisors(len(z))[::-1]
 
-            self.diffraction_map.set_map_shape_options(divisors)
+            # self.diffraction_map.set_map_shape_options(divisors)
 
-            #self.diffraction_map.set_map_shape([66,87]) 
-            self.diffraction_map.set_diffraction_data(z)
-            self.diffraction_map.fnames = self.azint_data.fnames
-            self.diffraction_map_dock.setVisible(True)
+            # #self.diffraction_map.set_map_shape([66,87]) 
+            # self.diffraction_map.set_diffraction_data(z)
+            # self.diffraction_map.fnames = self.azint_data.fnames
+            # self.diffraction_map_dock.setVisible(True)
 
             pass
 
