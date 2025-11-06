@@ -25,5 +25,14 @@ def tth_to_q(tth, E):
     q = (4 * np.pi / wavelength) * np.sin(np.radians(tth) / 2)
     return q
 
+def get_divisors(x):
+    """Get all divisors of an integer x."""
+    divisors = []
+    for i in range(1,int(x**0.5)+1):
+        if x%i == 0:
+            divisors.append(i)
+            divisors.append(x//i)
+    return sorted(list(divisors))
+
 if __name__ == "__main__":
     pass
