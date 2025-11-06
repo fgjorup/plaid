@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-plaid - plot azimuthally integrated ata
+plaid - plaid looks at integrated data
 F.H. Gjørup 2025
 Aarhus University, Denmark
 MAX IV Laboratory, Lund University, Sweden
@@ -228,7 +228,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.setWindowTitle("plaid - plot azimuthally integrated data")
+        self.setWindowTitle("plaid - plaid looks at integrated data")
         self.statusBar().showMessage("")
         # Set the window icon
         self.setWindowIcon(QIcon(":/icons/plaid.png"))
@@ -1159,7 +1159,7 @@ class MainWindow(QMainWindow):
         
         # header
         if export_settings['header_checkbox']:
-            header = ("plaid - plot azimuthally integrated data\n"
+            header = ("plaid - plaid looks at integrated data\n"
                         f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
                         f"exported from {self.azint_data.fnames[0]}\n")
             if self.E is not None:
@@ -1413,7 +1413,7 @@ class MainWindow(QMainWindow):
             I = self.azint_data.get_I()
             x = self.heatmap.x
             # y = np.arange(I.shape[0])
-            self.heatmap.set_data(x, I.T)
+            self.heatmap.set_data(x, I.T) 
         elif event.key() == QtCore.Qt.Key.Key_C:
             # Show/hide the correlation map
             self.correlation_map_dock.setVisible(not self.correlation_map_dock.isVisible())
@@ -1577,7 +1577,7 @@ class MainWindow(QMainWindow):
     def show_help_dialog(self):
         """Show the help dialog."""
         help_text = (
-            "<h2>Help - plot azimuthally integrated data</h2>"
+            "<h2>Help</h2>"
             "<p>This application allows you to visualize azimuthally integrated data "
             "from HDF5 files and compare them with reference patterns from CIF files.</p>"
             "<h3>Usage</h3>"
@@ -1596,15 +1596,18 @@ class MainWindow(QMainWindow):
             "<ul>"
             "<li><b>L</b>: Toggle log scale for the heatmap.</li>"
             "<li><b>Q</b>: Toggle between q and 2theta axes.</li>"
+            "<li><b>C</b>: Show/hide the correlation map.</li>"
+            "<li><b>M</b>: Show/hide the diffraction map.</li>"
             "</ul>"
         )
+
         # Show the help dialog with the specified text
         QMessageBox.about(self, "Help", help_text)
     
     def show_about_dialog(self):
         """Show the about dialog."""
         about_text = (
-            "<h2>plaid - plot azimuthally integrated data</h2>"
+            "<h2>plaid - plaid looks at integrated data</h2>"
             f"<p>Version {plaid.__version__}</p>"
             f"<p>{plaid.__description__}</p>"
             f"<p>Developed by: <a href='mailto:{plaid.__email__}'>{plaid.__author__}</a><br>"
@@ -1689,7 +1692,7 @@ class MainWindow(QMainWindow):
                 # Show a welcome message and ask if the user wish to create a desktop shortcut
                 welcome_text = (
                     "<h2>Welcome to plaid!</h2>"
-                    "<p>Thank you for using plaid - plot azimuthally integrated data.</p>"
+                    "<p>Thank you for using plaid - plaid looks at integrated data.</p>"
                     "<p>You can find help to some of the basic functionalities in the 'Help' menu.</p>"
                 )
                 if os.name == 'nt':  # Only ask for shortcut creation on Windows

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-plaid - Plot Azimuthally Integrated Data
+plaid - plaid looks at integrated data
 F.H. Gjørup 2025
 Aarhus University, Denmark
 MAX IV Laboratory, Lund University, Sweden

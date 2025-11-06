@@ -1,5 +1,5 @@
 """
-plaid - plot azimuthally integrated data
+plaid - plaid looks at integrated data
 
 A PyQt6-based application for visualizing and analyzing azimuthally integrated 
 X-ray diffraction data, with support for reference patterns and auxiliary data plotting.
