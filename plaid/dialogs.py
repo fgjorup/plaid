@@ -235,7 +235,8 @@ class H5Dialog(QDialog):
                 shape = f[key].shape if hasattr(f[key], 'shape') and len(f[key].shape) else ""
                 item = QTreeWidgetItem([key, self._shape_to_str(shape)])
                 self.file_tree.addTopLevelItem(item)
-                has_child_with_shape = self._populate_item(item, f[key])
+                if isinstance(f[key], h5.Group):
+                    has_child_with_shape = self._populate_item(item, f[key])
                 #if not has_child_with_shape:
                     # If no child has a shape, set the item to a lighter color
                     # item.setForeground(0, pg.mkColor("#AAAAAA"))

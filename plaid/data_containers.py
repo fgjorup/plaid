@@ -409,7 +409,7 @@ class AzintData():
         """
         dialog = H5Dialog(self.parent, fname)
         if not dialog.exec_1d_2d_pair():
-            return None, None, None, None
+            return None, None, None, None, None
 
         selected = dialog.get_selected_items() # list of tuples with (alias, full_path, shape)
         axis = [item for item in selected if not "×" in item[2]][0] 
