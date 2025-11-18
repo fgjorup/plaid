@@ -1360,7 +1360,8 @@ class MainWindow(QMainWindow):
                 divisors = get_divisors(self.azint_data.shape[0])[::-1]
                 self.diffraction_map.set_map_shape_options(divisors)
             else:
-                self.diffraction_map.set_map_shape_options([self.azint_data.map_shape[0],])
+                # self.diffraction_map.set_map_shape_options([self.azint_data.map_shape[0],])
+                self.diffraction_map.set_map_shape_options([*self.azint_data.map_shape])
             self.diffraction_map.fnames = self.azint_data.fnames
 
         roi = self.pattern.get_linear_region_roi()
@@ -1377,10 +1378,14 @@ class MainWindow(QMainWindow):
     def linear_region_changed(self,roi):
         """Handle changes to the linear region in the pattern plot."""
         if self.diffraction_map_dock.isVisible() and self.azint_data.I is not None and self.azint_data.shape[0] > 1:
-            if np.sum(roi) == 0:
+            if roi is None or np.sum(roi) == 0:
                 z = np.zeros(self.azint_data.shape[0])
             else:
-                z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+                if self.azint_data.map_indices is None:
+                    z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+                else:
+                    z = np.full((np.prod(self.azint_data.map_shape),), np.nan)
+                    z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
             self.diffraction_map.set_diffraction_data(z)
         
 

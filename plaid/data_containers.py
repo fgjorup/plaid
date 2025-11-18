@@ -13,8 +13,9 @@ import numpy as np
 from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
 from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_signal_errors, get_nx_axes,
-                         get_nx_energy, get_nx_monitor, get_instrument_name, get_source_name)
-from plaid.misc import q_to_tth, tth_to_q
+                         get_nx_energy, get_nx_monitor, get_instrument_name, get_source_name,
+                         get_nx_sample, get_nx_transformations, get_translations_from_nx_transformations)
+from plaid.misc import q_to_tth, tth_to_q, get_map_shape_and_indices
 from plaid.dialogs import H5Dialog
 
 class AzintData():
@@ -116,6 +117,10 @@ class AzintData():
                                        QMessageBox.StandardButton.Yes)
                 if reply == QMessageBox.StandardButton.No:
                     self.I0 = None
+        if self._load_func == self._load_azint:
+            # If the data is loaded from a nxazint file, attempts to load
+            # the map shape and pixel indices from a nxtransformations group in the file.
+            self.load_map_shape_and_indices()
 
         return True
     
@@ -138,6 +143,35 @@ class AzintData():
                     return False
                 I0 = np.append(I0, I0_) if I0.size else I0_
         self.I0 = I0
+        return True
+    
+    def load_map_shape_and_indices(self):
+        """
+        Load the map shape and pixel indices from an nxtransformations group
+        in the HDF5 file(s). All files in self.fnames are expected to have
+        a nxtransformations group, otherwise, it returns None.
+        """
+        x,y = np.array([]), np.array([])
+        for fname in self.fnames:
+            with h5.File(fname, 'r') as f:
+                sample = get_nx_sample(f)
+                if sample is None:
+                    self.map_shape = None
+                    self.pixel_indices = None
+                    return False
+                transformations = get_nx_transformations(sample)
+                if transformations is None:
+                    self.map_shape = None
+                    self.pixel_indices = None
+                    return False
+                translations = get_translations_from_nx_transformations(transformations)
+                if translations is None or "x" not in translations or "y" not in translations:
+                    self.map_shape = None
+                    self.pixel_indices = None
+                    return False
+                x = np.append(x, translations["x"]) if x.size else translations["x"]
+                y = np.append(y, translations["y"]) if y.size else translations["y"]
+        self.map_shape, self.map_indices = get_map_shape_and_indices(y, x)
         return True
 
     def user_E_dialog(self):

@@ -34,5 +34,24 @@ def get_divisors(x):
             divisors.append(x//i)
     return sorted(list(divisors))
 
+def get_map_shape_and_indices(y,x):
+    """Get pixel indices and map shape from absolute y (fast) and  x (slow) positions."""
+    def guessRes(x,decimals=3):
+        """Guess the resolution based on the median of the absolute steps"""
+        dx = np.abs(np.diff(x))
+        return np.round(np.median(dx[dx>0.0001]),decimals)
+
+    x_res = guessRes(x)
+    y_res = guessRes(y)
+    x_index = np.round((x-x.min())/x_res).astype(int)
+    y_index = np.round((y-y.min())/y_res).astype(int)
+    # guess the map shape from the indices
+    map_shape = (x_index.max()+1,y_index.max()+1)
+
+    pixel_indices = np.arange(np.prod(map_shape)).reshape(map_shape)
+    pixel_indices = list(pixel_indices[x_index,y_index])
+
+    return map_shape, pixel_indices
+
 if __name__ == "__main__":
     pass

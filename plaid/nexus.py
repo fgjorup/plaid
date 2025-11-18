@@ -81,6 +81,11 @@ def get_nx_sample(gr):
     gr = get_nx_entry(gr)
     return get_nx_group(gr, 'sample', 'NXsample')
 
+def get_nx_transformations(gr):
+    """Get the transformations nexus group from a nexus hdf5 file."""
+    gr = get_nx_sample(gr)
+    return get_nx_group(gr, 'transformations', 'NXtransformations')
+
 def get_nx_instrument(gr):
     """Get the instrument nexus group from a nexus hdf5 file."""
     if gr is None:
@@ -197,6 +202,25 @@ def get_source_name(gr):
             return name.decode('utf-8')
         return name
     return None
+
+def get_translations_from_nx_transformations(gr):
+    """
+    Get the translations from the nxtransformations group in a nexus hdf5 file.
+    Use the 'transformation_type' attribute to identify translations, and the
+    'vector' attribute to identify the axis.
+    Returns a dictionary with keys 'x', 'y', 'z' and values as the corresponding datasets.
+    """
+    transformations = get_nx_transformations(gr)
+    if transformations is not None:
+        translations = {}
+        for name, dset in transformations.items():
+            if hasattr(dset, 'attrs') and "transformation_type" in dset.attrs:
+                v = dset.attrs.get("vector",None)
+                if v is None:
+                    continue
+                name = [["x","y","z"][i] for i, comp in enumerate(v) if comp == 1][0]
+                translations[name] = dset[:]
+    return translations
 
 if __name__ == "__main__":
     pass
