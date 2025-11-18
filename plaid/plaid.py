@@ -140,7 +140,7 @@ def save_recent_files_settings(recent_files):
     recent_files = [f for f in recent_files if f]  # Remove empty entries
     # Limit to the last 10 files
     if len(recent_files) > 10:
-        recent_files = recent_files[-10:]
+        recent_files = recent_files[:10]
     # Save the recent files
     settings.setValue("recent-files", recent_files)
     settings.endGroup()
@@ -447,20 +447,21 @@ class MainWindow(QMainWindow):
         
         # add a menu with actions to open recent files
         recent_files = read_recent_files_settings()
-        recent_menu = file_menu.addMenu("Open &Recent")
+        self.recent_menu = file_menu.addMenu("Open &Recent")
         if recent_files:
-            recent_menu.setEnabled(True)
-            recent_menu.setToolTip("Open a recent file")
+            self.recent_menu.setEnabled(True)
+            self.recent_menu.setToolTip("Open a recent file")
             for file in recent_files:
-                action = QAction(file, self)
-                action.setToolTip(f"Open {file}")
-                # action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
-                action.triggered.connect(lambda checked, f=file: self.open_file(f))
-                action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
-                recent_menu.addAction(action)
+                # action = QAction(file, self)
+                # action.setToolTip(f"Open {file}")
+                # # action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
+                # action.triggered.connect(lambda checked, f=file: self.open_file(f))
+                # action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
+                # self.recent_menu.addAction(action)
+                self._add_recent_file_action(file)
         else:
-            recent_menu.setEnabled(False)
-            recent_menu.setToolTip("No recent files available")
+            self.recent_menu.setEnabled(False)
+            self.recent_menu.setToolTip("No recent files available")
 
         file_menu.addSeparator()
 
@@ -485,6 +486,18 @@ class MainWindow(QMainWindow):
         else:
             recent_references_menu.setEnabled(False)
             recent_references_menu.setToolTip("No recent references available")
+    
+    def _add_recent_file_action(self,file,insert_at_top=False):
+        """Add a file to the recent files settings."""
+        action = QAction(file, self)
+        action.setToolTip(f"Open {file}")
+        # action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
+        action.triggered.connect(lambda checked, f=file: self.open_file(f))
+        action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
+        if insert_at_top:
+            self.recent_menu.insertAction(self.recent_menu.actions()[0], action)
+        else:
+            self.recent_menu.addAction(action)
 
     def _init_view_menu(self, menu_bar):
         """Initialize the View menu with actions to toggle visibility of dock widgets and auxiliary plots. Called by self._init_menu_bar()."""
@@ -638,6 +651,9 @@ class MainWindow(QMainWindow):
             self.heatmap.clear()
             self.pattern.clear()
             self.auxiliary_plot.clear()
+            # add the closed file to the recent files settings
+            save_recent_files_settings([file])
+            self._add_recent_file_action(file,insert_at_top=True)
 
         if file in self.aux_data.keys():
             del self.aux_data[file]
