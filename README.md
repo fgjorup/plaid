@@ -104,8 +104,10 @@ plt.show()
 | Key | Action                                      |
 |-----|---------------------------------------------|
 | L   | Toggle log scale for the heatmap            |
-| C   | Show/hide the auto-correlation map          |
 | Q   | Toggle between q and 2θ axes                |
+| C   | Show/hide the auto-correlation map          |
+| M   | Show/hide the diffraction map               |
+| B   | Subtract the active pattern as background   |
 | ↑   | Move the active line one frame up           |
 | ↓   | Move the active line one frame down         |
 | ←   | Move the active line several frames down    |

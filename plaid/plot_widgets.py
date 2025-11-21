@@ -9,11 +9,15 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 """
 
 #from operator import index
+from unicodedata import name
 import numpy as np
-from PyQt6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox, QDoubleSpinBox, QCheckBox, QSizePolicy
+from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox,
+                            QDoubleSpinBox, QCheckBox, QSizePolicy,QGraphicsDropShadowEffect, QGraphicsColorizeEffect)
 from PyQt6 import QtCore
-from PyQt6.QtGui import QColor, QTransform
+from PyQt6.QtGui import QColor, QTransform, QPixmap, QIcon, QPalette
 import pyqtgraph as pg
+from plaid.misc import q_to_tth, tth_to_q
+import plaid.resources
 
 colors = [
         '#AAAA00',  # Yellow
@@ -229,14 +233,26 @@ class HeatmapWidget(QWidget):
             return []
         # return the positions of all horizontal lines as a list of indices
         return [self.get_h_line_pos(i) for i in range(len(self.h_lines))]
+    
+    def get_active_h_line_index(self):
+        """Get the index of the currently active horizontal line."""
+        current_index = self.h_lines.index(self.active_line) if self.active_line in self.h_lines else 0
+        return current_index
+    
+    def get_active_h_line_pos(self):
+        """Get the index of the currently active horizontal line."""
+        current_index = self.get_active_h_line_index()
+        return self.get_h_line_pos(current_index)
 
     def move_active_h_line(self, delta):
         """Move the active horizontal line by a delta value."""
         if not self.h_lines:
             return
         # get the index of the currently active horizontal line
-        current_index = self.h_lines.index(self.active_line) if self.active_line in self.h_lines else 0
-        pos = self.get_h_line_pos(current_index)
+        #current_index = self.h_lines.index(self.active_line) if self.active_line in self.h_lines else 0
+        current_index = self.get_active_h_line_index()
+        #pos = self.get_h_line_pos(current_index)
+        pos = self.get_active_h_line_pos()
         if pos is None:
             return
         # move the horizontal line by the delta value
@@ -345,14 +361,21 @@ class PatternWidget(QWidget):
     sigXRangeChanged = QtCore.pyqtSignal(object)
     sigPatternHovered = QtCore.pyqtSignal(object)
     sigLinearRegionChangedFinished = QtCore.pyqtSignal(object)
+    sigRequestLockPattern = QtCore.pyqtSignal(object)
+    sigRequestSubtractPattern = QtCore.pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self.x = None
         self.y = None
         self.pattern_items = []
+        self.locked_pattern_items = []
         self.reference_items = []
         self.reference_hkl = {}
+
+        self.linear_region_ignore_negative = False
+        self.linear_region_linear_background = False
 
         self.color_cycle = colors  # Default color cycle for patterns
 
@@ -368,12 +391,63 @@ class PatternWidget(QWidget):
                                       orientation="vertical",
                                       brush="#AAAA0050",
                                       hoverBrush="#AAAA0080",
-                                      pen="#0000AAAA"
+                                      pen="#0000AAAA",
                                       )
-        self.lr.sigRegionChangeFinished.connect(lambda: self.sigLinearRegionChangedFinished.emit(self.get_linear_region_roi()))
         
-        self.plot_widget.addItem(self.lr)
+        self.plot_widget.addItem(self.lr, ignoreBounds=True)
         self.lr.setVisible(False)  # Hide the LinearRegionItem by default
+
+        self.fill_plots = [pg.PlotDataItem(pen="#FFFFFF00"), pg.PlotDataItem(pen="#FFFFFF00")]
+        for fill_plot in self.fill_plots:
+            self.plot_widget.addItem(fill_plot)
+            fill_plot.setVisible(True)  # Hide the fill plots by default
+
+        self.fill_area = pg.FillBetweenItem(self.fill_plots[0], self.fill_plots[1], brush='#AAAA0080')
+        self.plot_widget.addItem(self.fill_area)
+        self.fill_area.setVisible(False)  # Hide the FillBetweenItem by default
+
+        # add a button item to the plot
+        pxmap = QPixmap(":/icons/roi_default.png")
+        self.button_default = pg.ButtonItem(pixmap=pxmap, width=15)
+        self.button_default.setToolTip("Include full linear region")
+        # self.button_default.setScale(1.5)
+        self.button_default.clicked.connect(self.toggle_linear_region_options)
+        # add the button to the scene of the plot widget
+        # to ensure that is doesn't change size or scale with the data
+        self.plot_widget.scene().addItem(self.button_default)
+        self.button_default.setVisible(False)  # Hide the button by default
+        
+        # add a button item to the plot
+        pxmap = QPixmap(":/icons/roi_ign_neg.png")
+        self.button_ign_neg = pg.ButtonItem(pixmap=pxmap, width=15)
+        self.button_ign_neg.setToolTip("Ignore negative values in linear region")
+        self.button_ign_neg.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+        self.button_ign_neg.clicked.connect(self.toggle_linear_region_options)
+        # add the button to the scene of the plot widget
+        # to ensure that is doesn't change size or scale with the data
+        self.plot_widget.scene().addItem(self.button_ign_neg)
+        self.button_ign_neg.setVisible(False)  # Hide the button by default
+
+        # add a button item to the plot
+        pxmap = QPixmap(":/icons/roi_linear.png")
+        self.button_linear_bgr = pg.ButtonItem(pixmap=pxmap, width=15)
+        self.button_linear_bgr.setToolTip("Use linear background in linear region")
+        self.button_linear_bgr.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+        self.button_linear_bgr.clicked.connect(self.toggle_linear_region_options)
+        # add the button to the scene of the plot widget
+        # to ensure that is doesn't change size or scale with the data
+        self.plot_widget.scene().addItem(self.button_linear_bgr)
+        self.button_linear_bgr.setVisible(False)  # Hide the button by default
+
+
+        self.lr.sigRegionChangeFinished.connect(lambda: self.sigLinearRegionChangedFinished.emit(self.get_linear_region_roi()))
+        # update the fill area when the linear region is moved
+        self.lr.sigRegionChanged.connect(self.update_fill_area)
+        self.lr.sigRegionChanged.connect(self.move_linear_region_button)
+
+        self.plot_widget.getPlotItem().vb.sigRangeChanged.connect(self.move_linear_region_button)
+
+  
 
         # create a plot item for the average pattern
         self.avg_pattern_item = pg.PlotDataItem(pen='#AAAAAA', name='Average Pattern')
@@ -406,13 +480,32 @@ class PatternWidget(QWidget):
         # - export current pattern(s)
         # - export all patterns
         # - fix current pattern(s)
+        #    > lock current active pattern
+        #    > unlock/remove current active pattern
         # - subtract current pattern(s)
         
-        # self.toolbar = QToolBar(self)
-        # self.toolbar.setOrientation(QtCore.Qt.Orientation.Vertical)
-        # # Add actions to the toolbar
-        # action = self.toolbar.addAction("Add Pattern")
-        # layout.addWidget(self.toolbar)
+        self.toolbar = QToolBar(self)
+        self.toolbar.setOrientation(QtCore.Qt.Orientation.Vertical)
+        background_color = self.plot_widget.backgroundBrush().color().name()
+        self.toolbar.setStyleSheet(f"background: {background_color}; ")
+        self.toolbar.setIconSize(QtCore.QSize(20,20))
+
+        # Add actions to the toolbar
+        action = self.toolbar.addAction(f"\U0001F512") # padlock icon
+        action.setToolTip("Lock current active pattern")
+        action.triggered.connect(lambda: self.sigRequestLockPattern.emit(True))
+        layout.addWidget(self.toolbar)
+
+        action = self.toolbar.addAction(f"\U0001F513") # padlock icon
+        action.setToolTip("Unlock latest locked pattern")
+        action.triggered.connect(lambda: self.sigRequestLockPattern.emit(False))
+        layout.addWidget(self.toolbar)
+
+        icon = QIcon(":/icons/subtract.png")
+        action = self.toolbar.addAction(icon,None) #f"\U0001F4C9") # chart decreasing icon
+        action.setToolTip("Subtract current pattern")
+        action.triggered.connect(lambda: self.sigRequestSubtractPattern.emit())
+        layout.addWidget(self.toolbar)
 
 
     def add_pattern(self):
@@ -446,14 +539,64 @@ class PatternWidget(QWidget):
         self.plot_widget.setLimits(xMin=np.min(x)-x_pad, xMax=np.max(x)+x_pad)
         self.x = x
         self.y = y
-
+        self.update_fill_area()
 
     def set_pattern_name(self, name=None, index=-1):
         """Set the name of the pattern item."""
         if name is None:
             name = f"frame {index}"
-        self.legend.items[index+1][1].setText(name)  # update the legend item text
+        offset = 1+len(self.locked_pattern_items)
+        self.legend.items[index+offset][1].setText(name)  # update the legend item text
     
+    def add_locked_pattern(self,x,y,name):
+        """Add a new locked pattern item to the plot."""
+        color = self.color_cycle[len(self.locked_pattern_items) % len(self.color_cycle)]
+        pen = pg.mkPen(color=color, width=1, style=QtCore.Qt.PenStyle.DashLine)
+        brush = pg.mkBrush(color=color)
+        pattern = pg.PlotDataItem(x=x,
+                                  y=y,
+                                  pen=pen,
+                                  symbol='o',
+                                  symbolSize=2, 
+                                  symbolPen=pen, 
+                                  symbolBrush=brush,
+                                  name=name,
+                                )
+        pattern.setZValue(-1)
+        self.plot_widget.getPlotItem().addItem(pattern)
+        
+        # clunky workaround to "insert" the legend item. Remove all and re-add
+        self.legend.removeItem(pattern)
+        for item in self.pattern_items:
+            self.legend.removeItem(item)
+        self.legend.addItem(pattern,name)
+        for item in self.pattern_items:
+            self.legend.addItem(item,item.name())
+        self.locked_pattern_items.append(pattern)
+
+    def locked_pattern_Q_to_tth(self,index,E):
+        """Convert the locked patterns from Q to 2theta using the given energy E (in keV)."""
+        pattern = self.locked_pattern_items[index]
+        q, y = pattern.getData()
+        tth = q_to_tth(q, E)
+        pattern.setData(tth, y)
+    
+    def locked_pattern_tth_to_Q(self,index,E):
+        """Convert the locked patterns from 2theta to Q using the given energy E (in keV)."""
+        pattern = self.locked_pattern_items[index]
+        tth, y = pattern.getData()
+        q = tth_to_q(tth, E)
+        pattern.setData(q, y)
+
+    def remove_locked_pattern(self):
+        """Remove the last locked pattern item from the plot."""
+        if not self.locked_pattern_items:
+            return
+        pattern = self.locked_pattern_items.pop(-1)
+        self.plot_widget.getPlotItem().removeItem(pattern)
+        self.legend.removeItem(pattern)
+        
+
     def add_reference(self, hkl, x, I):
         """Add a reference pattern to the plot."""
         color = self.color_cycle[::-1][len(self.reference_items) % len(self.color_cycle)]
@@ -558,6 +701,11 @@ class PatternWidget(QWidget):
                 self.lr.setRegion([np.clip(x_min,self.x[0],self.x[-10]),
                                    np.clip(x_max,self.x[10],self.x[-1])])
         self.lr.setVisible(show)
+        self.fill_area.setVisible(show)
+        self.button_default.setVisible(show)
+        self.button_ign_neg.setVisible(show)
+        self.button_linear_bgr.setVisible(show)
+        self.update_fill_area()
 
     def get_linear_region_roi(self):
         """Get the current roi boolean mask of the linear region box."""
@@ -567,6 +715,66 @@ class PatternWidget(QWidget):
         # convert the x_range to indices
         roi = (self.x >= x_min) & (self.x <= x_max)
         return roi
+    
+    def update_fill_area(self):
+        """Update the fill area between the linear region box."""
+        roi = self.get_linear_region_roi()
+        if roi is None or np.sum(roi) == 0:
+            return
+        y = self.y[roi]
+        y0 = np.zeros_like(y)
+        if self.linear_region_ignore_negative:
+            y = np.clip(y, 0, None)
+        if self.linear_region_linear_background:
+            # make a simple linear background using the first 
+            # and last points in the ROI
+            y0 = np.linspace(y[0], y[-1], len(y))
+
+        self.fill_plots[0].setData(self.x[roi], y0)
+        self.fill_plots[1].setData(self.x[roi], y)
+        self.fill_area.setCurves(self.fill_plots[0], self.fill_plots[1])
+        
+    def move_linear_region_button(self):
+        """Move the linear region button to the top-right corner of the linear region."""
+        # get the position in data coordinates
+        x_min, x_max = self.lr.getRegion()
+        y_max = self.plot_widget.getPlotItem().viewRange()[1][1]
+        pos = QtCore.QPointF(x_max, y_max)
+        # map the position to the scene coordinates
+        pos = self.plot_widget.getPlotItem().vb.mapViewToScene(pos)
+        # move the button to the position with some offset
+        self.button_default.setPos(pos)
+        pos = pos + QtCore.QPointF(0, self.button_default._width+2)
+        self.button_ign_neg.setPos(pos)
+        pos = pos + QtCore.QPointF(0, self.button_default._width+2)
+        self.button_linear_bgr.setPos(pos)
+ 
+    def toggle_linear_region_options(self,button):
+        """Toggle the linear region options based on the button clicked."""
+        if button == self.button_default:
+            self.linear_region_ignore_negative = False
+            self.linear_region_linear_background = False
+            self.button_default.setGraphicsEffect(None)
+            self.button_ign_neg.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+            self.button_linear_bgr.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+            # self.button_default.setGraphicsEffect(QGraphicsDropShadowEffect(color=QColor("#AA0000")))#blurRadius=2, xOffset=0, yOffset=0))
+        
+        elif button == self.button_ign_neg:
+            self.linear_region_ignore_negative = True
+            self.linear_region_linear_background = False
+            self.button_default.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+            self.button_ign_neg.setGraphicsEffect(None)
+            self.button_linear_bgr.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+
+        elif button == self.button_linear_bgr:
+            self.linear_region_ignore_negative = False
+            self.linear_region_linear_background = True
+            self.button_default.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+            self.button_ign_neg.setGraphicsEffect(QGraphicsColorizeEffect(color=QColor("#AAAAAA"),strength=.3))
+            self.button_linear_bgr.setGraphicsEffect(None)
+
+        self.update_fill_area()
+        self.sigLinearRegionChangedFinished.emit(self.get_linear_region_roi())
 
     def hover_event(self, event):
         """Handle the hover event on the plot item."""
@@ -1013,6 +1221,7 @@ class DiffractionMapWidget(BasicMapWidget):
         if len(z) != np.prod(self.map_shape):
             raise ValueError("The length of z does not match the product of map_shape.")
         self.z = z
+        self.is_snake = False
         self.update_map()
 
     def update_map(self):
@@ -1044,6 +1253,12 @@ class DiffractionMapWidget(BasicMapWidget):
         """Handle the change of the map shape combo box."""
         shape = self.map_shape_combo.itemData(index)
         if shape:
+            # check if the rows need to be "unflipped" (snake)
+            # before the shape is changed
+            if self.is_snake:
+                im = self.z.reshape(self.map_shape)
+                im[1::2] = im[1::2, ::-1]
+                self.is_snake = False
             self.map_shape = shape
             self.update_map()
 

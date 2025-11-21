@@ -55,6 +55,8 @@ class AzintData():
         self.map_shape = None  # Shape of the loaded data files used for mapping (PLACEHOLDER)
         self.map_indices = None  # Indices of the loaded data files used for mapping (PLACEHOLDER)
 
+        self.y_bgr = None  # Background intensity data
+
         #self.aux_data = {} # {alias: np.array}
 
     def load(self, look_for_I0=True):
@@ -209,7 +211,7 @@ class AzintData():
         q = tth_to_q(self.x, self.E)
         return q
         
-    def get_I(self, index=None, I0_normalized=True):
+    def get_I(self, index=None, I0_normalized=True, bgr_subtracted=True):
         """
         Get the intensity data at I[index] if index not None, otherwise return I.
         By default, it returns the normalized intensity data by dividing by I0 if I0 is set.
@@ -228,14 +230,16 @@ class AzintData():
             I0 = I0[index] if isinstance(I0, np.ndarray) else I0  # Get the corresponding I0 value
         else:
             I = self.I
+        if bgr_subtracted and self.y_bgr is not None:
+            I = I - self.y_bgr
         return (I.T / I0).T
     
-    def get_average_I(self, I0_normalized=True):
+    def get_average_I(self, I0_normalized=True,bgr_subtracted=True):
         """Get the average intensity data, normalized by I0 if set."""
         if self.I is None:
             print("No intensity data loaded.")
             return None
-        I = self.get_I(index=None, I0_normalized=I0_normalized)
+        I = self.get_I(index=None, I0_normalized=I0_normalized,bgr_subtracted=bgr_subtracted)
         return np.mean(I, axis=0) if I is not None else None
 
     def get_I_error(self, index=None, I0_normalized=True):
@@ -265,6 +269,23 @@ class AzintData():
         I_error = self.get_I_error(index=None, I0_normalized=I0_normalized)
         return np.mean(I_error, axis=0) if I_error is not None else None
 
+    def set_y_bgr(self, y_bgr):
+        """Set the background intensity data."""
+        if y_bgr is None:
+            self.y_bgr = None
+            return
+        if isinstance(y_bgr, np.ndarray):
+            self.y_bgr = y_bgr
+        elif isinstance(y_bgr, (list, tuple)):
+            self.y_bgr = np.array(y_bgr)
+        else:
+            print("Background intensity data must be a numpy array or a list/tuple.")
+            return
+        if self.y_bgr.shape[0] != self.x.shape[0]:
+            print(f"Background intensity data shape {self.y_bgr.shape} must match the radial axis shape {self.x.shape}.")
+            self.y_bgr = None
+            return
+        
     def set_I0(self, I0):
         """Set the I0 data."""
         if isinstance(I0, np.ndarray):
@@ -316,7 +337,7 @@ class AzintData():
         self._export_xy(fname,x,y,y_e, kwargs)
         return True
     
-    def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, kwargs={}):
+    def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, bgr_subtracted=True, kwargs={}):
         """
         Export the average azimuthal integration data to a text file.  
         If I0_normalized is True, normalize the intensity data by I0.  
@@ -329,8 +350,8 @@ class AzintData():
             x = self.get_q()
         else:
             x = self.get_tth()
-        y = self.get_average_I(I0_normalized=I0_normalized)
-        y_e = self.get_average_I_error(I0_normalized=I0_normalized)
+        y = self.get_average_I(I0_normalized=I0_normalized, bgr_subtracted=bgr_subtracted)
+        y_e = self.get_average_I_error(I0_normalized=I0_normalized, bgr_subtracted=bgr_subtracted)
         
         if x is None or y is None:
             print("Error retrieving data for export.")

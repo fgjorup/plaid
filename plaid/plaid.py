@@ -8,7 +8,7 @@ MAX IV Laboratory, Lund University, Sweden
 This module provides the main application window for plotting azimuthally integrated data,
 including loading files, displaying heatmaps and patterns, and managing auxiliary data.
 """
-from operator import index
+# from operator import index
 import sys
 import os
 import numpy as np
@@ -240,6 +240,8 @@ class MainWindow(QMainWindow):
 
         self.azint_data = AzintData()
         self.aux_data = {}
+
+        self.locked_patterns = []  # list of (is_Q, E) tuples for locked patterns
         
         self._load_color_cycle()
         if not self.color_cycle:
@@ -415,7 +417,9 @@ class MainWindow(QMainWindow):
         # Connect the pattern signals to the appropriate slots
         self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)
         self.pattern.sigPatternHovered.connect(self.update_status_bar)
-        self.pattern.sigLinearRegionChangedFinished.connect(self.linear_region_changed)
+        self.pattern.sigLinearRegionChangedFinished.connect(self.set_diffraction_map)
+        self.pattern.sigRequestLockPattern.connect(self.handle_lock_pattern_request)
+        self.pattern.sigRequestSubtractPattern.connect(self.set_active_pattern_as_background)
         # Connect the auxiliary plot signals to the appropriate slots
         self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
         self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
@@ -1128,6 +1132,11 @@ class MainWindow(QMainWindow):
                 _x, _y = ref_item.getData()
                 _x = tth_to_q(_x, self.E)
                 ref_item.setData(x=_x, y=_y)
+            for i, locked_pattern in enumerate(self.locked_patterns):
+                is_Q, E = locked_pattern
+                if not is_Q:
+                    self.pattern.locked_pattern_tth_to_Q(i, E)
+                    locked_pattern[0] = True  # update the is_Q status
 
         else:
             self.heatmap.set_xlabel("2theta (deg)")
@@ -1143,6 +1152,60 @@ class MainWindow(QMainWindow):
                 _x, _y = ref_item.getData()
                 _x = q_to_tth(_x, self.E)
                 ref_item.setData(x=_x, y=_y)
+            for i, locked_pattern in enumerate(self.locked_patterns):
+                is_Q, E = locked_pattern
+                if is_Q:
+                    self.pattern.locked_pattern_Q_to_tth(i, E)
+                    locked_pattern[0] = False  # update the is_Q status
+
+    def set_active_pattern_as_background(self):
+        """Set the currently active pattern as the background to be subtracted from all patterns."""
+        if self.azint_data.I is None:
+            return
+        index = self.heatmap.get_active_h_line_pos()
+        y_bgr = self.azint_data.get_I(index,bgr_subtracted=False,I0_normalized=False)
+        # if the background is the same as the current background, set to None
+        if np.all(y_bgr == self.azint_data.y_bgr):
+            y_bgr = None
+        self.azint_data.set_y_bgr(y_bgr)
+        
+        # update heatmap
+        I = self.azint_data.get_I()
+        x = self.heatmap.x
+        self.heatmap.set_data(x, I.T)
+        # update patterns and average pattern
+        self.update_all_patterns()
+        y_avg = self.azint_data.get_average_I()
+        self.pattern.set_avg_data(y_avg)
+        # update diffraction map if visible
+        if self.diffraction_map_dock.isVisible():
+            self.update_diffraction_map(True)
+
+    def lock_active_pattern(self):
+        """Lock the currently active pattern in the pattern plot."""
+        if self.azint_data.I is None:
+            return
+        index = self.heatmap.get_active_h_line_pos()
+        x = self.azint_data.get_tth() if not self.is_Q else self.azint_data.get_q()
+        y = self.azint_data.get_I(index)
+        # U+1F512 padlock emoji
+        name = f"\U0001F512 {index}"
+        self.locked_patterns.append([self.is_Q, self.azint_data.user_E_dialog()]) 
+        self.pattern.add_locked_pattern(x,y,name)
+
+    def remove_locked_pattern(self):
+        """Remove the last locked pattern from the pattern plot."""
+        if len(self.locked_patterns) == 0:
+            return
+        self.locked_patterns.pop(-1)
+        self.pattern.remove_locked_pattern()
+
+    def handle_lock_pattern_request(self, flag):
+        """Handle the lock pattern request from the pattern plot."""
+        if flag:
+            self.lock_active_pattern()
+        else:
+            self.remove_locked_pattern()
 
     def _prepare_export_settings(self):
         """
@@ -1381,27 +1444,36 @@ class MainWindow(QMainWindow):
             self.diffraction_map.fnames = self.azint_data.fnames
 
         roi = self.pattern.get_linear_region_roi()
-        
-        if self.azint_data.map_indices is None:
-            z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
-        else:
-            z = np.full((np.prod(self.azint_data.map_shape),), np.nan)
-            z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
-
-        self.diffraction_map.set_diffraction_data(z)
+        self.set_diffraction_map(roi)
+  
 
 
-    def linear_region_changed(self,roi):
-        """Handle changes to the linear region in the pattern plot."""
+    def set_diffraction_map(self,roi):
+        """
+        Set the diffraction map data according to the provided roi.
+        Called when the linear region in the pattern plot is changed and 
+        whenever the diffraction map is updated.
+        """
         if self.diffraction_map_dock.isVisible() and self.azint_data.I is not None and self.azint_data.shape[0] > 1:
             if roi is None or np.sum(roi) == 0:
                 z = np.zeros(self.azint_data.shape[0])
             else:
+                I = self.azint_data.get_I()[:, roi]
+                if self.pattern.linear_region_ignore_negative:
+                    I[I<0] = 0
+                elif self.pattern.linear_region_linear_background:
+                    # perform a simple linear background subtraction
+                    # using the first and last points in the ROI
+                    bgr = np.linspace(I[:,0], I[:,-1], I.shape[1]).T
+                    I = I - bgr
+
                 if self.azint_data.map_indices is None:
-                    z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+                    z = np.mean(I,axis=1)
+                    # z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
                 else:
                     z = np.full((np.prod(self.azint_data.map_shape),), np.nan)
-                    z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
+                    z[self.azint_data.map_indices] = np.mean(I,axis=1)
+                    # z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
             self.diffraction_map.set_diffraction_data(z)
         
 
@@ -1444,6 +1516,9 @@ class MainWindow(QMainWindow):
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
             self.toggle_q()
+        elif event.key() == QtCore.Qt.Key.Key_B:
+            # Set the active pattern as background
+            self.set_active_pattern_as_background()
         elif event.key() == QtCore.Qt.Key.Key_Up:
             # Move the selected line one increment up
             self.heatmap.move_active_h_line(1)
@@ -1461,42 +1536,6 @@ class MainWindow(QMainWindow):
 
         # # DEBUG
         elif event.key() == QtCore.Qt.Key.Key_Space:
-            
-            # def get_divisors(x):
-            #     divisors = []
-            #     for i in range(1,int(x**0.5)+1):
-            #         if x%i == 0:
-            #             divisors.append(i)
-            #             divisors.append(x//i)
-            #     return sorted(list(divisors))
-
-            # self.pattern.show_linear_region_box(True)
-            # roi = self.pattern.get_linear_region_roi()
-            
-            # if self.azint_data.I is None:
-            #     return
-            
-            # im = np.mean(self.azint_data.get_I()[:, roi],axis=1)
-            # im = im.reshape((66,87))  # hardcoded for now, should be set by the user
-
-            # # test nan handling
-            # im[im<0.08] = np.nan
-
-            # # simulate "snake" scan
-            # im[1::2,:] = im[1::2,::-1]
-
-            # z = im.flatten()
-            
-            # #z = np.mean(self.azint_data.get_I()[:, roi],axis=1)
-
-            # divisors = get_divisors(len(z))[::-1]
-
-            # self.diffraction_map.set_map_shape_options(divisors)
-
-            # #self.diffraction_map.set_map_shape([66,87]) 
-            # self.diffraction_map.set_diffraction_data(z)
-            # self.diffraction_map.fnames = self.azint_data.fnames
-            # self.diffraction_map_dock.setVisible(True)
 
             pass
 
@@ -1619,6 +1658,7 @@ class MainWindow(QMainWindow):
             "<li><b>Q</b>: Toggle between q and 2theta axes.</li>"
             "<li><b>C</b>: Show/hide the correlation map.</li>"
             "<li><b>M</b>: Show/hide the diffraction map.</li>"
+            "<li><b>B</b>: Subtract the active pattern as background.</li>"
             "</ul>"
         )
 
