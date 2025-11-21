@@ -418,8 +418,15 @@ class MainWindow(QMainWindow):
         self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)
         self.pattern.sigPatternHovered.connect(self.update_status_bar)
         self.pattern.sigLinearRegionChangedFinished.connect(self.set_diffraction_map)
+        self.pattern.sigRequestQToggle.connect(self.toggle_q)
         self.pattern.sigRequestLockPattern.connect(self.handle_lock_pattern_request)
         self.pattern.sigRequestSubtractPattern.connect(self.set_active_pattern_as_background)
+        self.pattern.sigRequestCorrelationMap.connect(self.show_correlation_map)
+        self.pattern.sigRequestDiffractionMap.connect(lambda: self.show_diffraction_map())
+        self.pattern.sigRequestExportAvg.connect(self.export_average_pattern)
+        self.pattern.sigRequestExportCurrent.connect(self.export_pattern)
+        self.pattern.sigRequestExportAll.connect(self.export_all_patterns)
+
         # Connect the auxiliary plot signals to the appropriate slots
         self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
         self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
@@ -443,6 +450,7 @@ class MainWindow(QMainWindow):
         """Initialize the File menu with actions for loading files and references. Called by self._init_menu_bar()."""
         # Create a file menu
         file_menu = menu_bar.addMenu("&File")
+        file_menu.setToolTipsVisible(True)
         # Add an action to load azimuthal integration data
         open_action = QAction("&Open", self)
         open_action.setToolTip("Open an HDF5 file")
@@ -507,6 +515,7 @@ class MainWindow(QMainWindow):
         """Initialize the View menu with actions to toggle visibility of dock widgets and auxiliary plots. Called by self._init_menu_bar()."""
         # create a view menu
         view_menu = menu_bar.addMenu("&View")
+        view_menu.setToolTipsVisible(True)
         # Add an action to toggle the file tree visibility
         toggle_file_tree_action = self.file_tree_dock.toggleViewAction()
         toggle_file_tree_action.setText("Show &File Tree")
@@ -532,6 +541,7 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         # add a toggle Q action
         toggle_q_action = QAction("&Q (Å-1)",self)
+        toggle_q_action.setToolTip("Toggle between Q (Å-1) and 2θ (degrees)")
         toggle_q_action.setCheckable(True)
         toggle_q_action.setChecked(self.is_Q)
         toggle_q_action.triggered.connect(self.toggle_q)
@@ -541,10 +551,12 @@ class MainWindow(QMainWindow):
         view_menu.addSeparator()
         # add a change color cycle action
         change_color_cycle_action = QAction("&Change Color Cycle", self)
+        change_color_cycle_action.setToolTip("Open the color cycle dialog")
         change_color_cycle_action.triggered.connect(self.show_color_cycle_dialog)
         view_menu.addAction(change_color_cycle_action)
         # add a toggle dark mode action
         toggle_dark_mode_action = QAction("&Dark Mode", self)
+        toggle_dark_mode_action.setToolTip("Toggle between dark and lightmode")
         toggle_dark_mode_action.setCheckable(True)
         toggle_dark_mode_action.setChecked(self.is_dark_mode)
         toggle_dark_mode_action.triggered.connect(self.toggle_dark_mode)
@@ -554,6 +566,7 @@ class MainWindow(QMainWindow):
         """Initialize the Export menu with actions to export patterns and settings. Called by self._init_menu_bar()."""
         # create an export menu
         export_menu = menu_bar.addMenu("&Export")
+        export_menu.setToolTipsVisible(True)
         # Add an action to export the average pattern
         export_average_action = QAction("&Export Average Pattern", self)
         export_average_action.setToolTip("Export the average pattern to a double-column file")
@@ -585,6 +598,7 @@ class MainWindow(QMainWindow):
         """Initialize the Help menu with actions to show help and about dialogs. Called by self._init_menu_bar()."""
         # create a help menu
         help_menu = menu_bar.addMenu("&Help")
+        help_menu.setToolTipsVisible(True)
         # Add an action to show the help dialog
         help_action = QAction("&Help", self)
         help_action.setToolTip("Show help dialog")
@@ -857,14 +871,14 @@ class MainWindow(QMainWindow):
         # Update the heatmap with the new data
         self.heatmap.set_data(x, I.T)
         # self.heatmap.set_data(x_edge, y_edge, I)
-        self.heatmap.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
+        self.heatmap.set_xlabel("2theta (deg)" if not is_q else "Q (1/A)")
 
 
         # Update the pattern with the first frame
         self.pattern.set_data(x, I[0])
         self.pattern.set_avg_data(y_avg)
         self.update_all_patterns()
-        self.pattern.set_xlabel("2theta (deg)" if not is_q else "q (1/A)")
+        self.pattern.set_xlabel("2theta (deg)" if not is_q else "Q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
         if not aux_plot_key is None:
             # if a selected item is provided, add the auxiliary plot for that item
@@ -1110,7 +1124,8 @@ class MainWindow(QMainWindow):
         
     def toggle_q(self):
         """Toggle between Q and 2theta in the heatmap and pattern plots."""
-        # Toggle between q and 2theta
+        if self.azint_data.I is None:
+            return
         if self.E is None:
             self.E = self.azint_data.user_E_dialog()
             if self.E is None:
@@ -1119,8 +1134,8 @@ class MainWindow(QMainWindow):
         self.is_Q = not self.is_Q
         self.toggle_q_action.setChecked(self.is_Q)
         if self.is_Q:
-            self.heatmap.set_xlabel("q (1/A)")
-            self.pattern.set_xlabel("q (1/A)")
+            self.heatmap.set_xlabel("Q (1/A)")
+            self.pattern.set_xlabel("Q (1/A)")
             x = self.azint_data.get_q()
             self.heatmap.set_data(x, self.azint_data.get_I().T)
             self.pattern.x = x
@@ -1509,10 +1524,10 @@ class MainWindow(QMainWindow):
             self.heatmap.set_data(x, I.T) 
         elif event.key() == QtCore.Qt.Key.Key_C:
             # Show/hide the correlation map
-            self.correlation_map_dock.setVisible(not self.correlation_map_dock.isVisible())
+            self.show_correlation_map()
         elif event.key() == QtCore.Qt.Key.Key_M:
             # Show/hide the diffraction map
-            self.diffraction_map_dock.setVisible(not self.diffraction_map_dock.isVisible())
+            self.show_diffraction_map()
         elif event.key() == QtCore.Qt.Key.Key_Q:
             # Toggle between q and 2theta
             self.toggle_q()
@@ -1538,6 +1553,12 @@ class MainWindow(QMainWindow):
         elif event.key() == QtCore.Qt.Key.Key_Space:
 
             pass
+    
+    def show_correlation_map(self):
+        self.correlation_map_dock.setVisible(not self.correlation_map_dock.isVisible())
+
+    def show_diffraction_map(self):
+        self.diffraction_map_dock.setVisible(not self.diffraction_map_dock.isVisible())
 
     def show_color_cycle_dialog(self):
         # get the first pattern (if available)

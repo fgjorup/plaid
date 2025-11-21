@@ -12,9 +12,9 @@ This module provides classes for plotting heatmaps and patterns using PyQtGraph.
 from unicodedata import name
 import numpy as np
 from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox,
-                            QDoubleSpinBox, QCheckBox, QSizePolicy,QGraphicsDropShadowEffect, QGraphicsColorizeEffect)
+                            QDoubleSpinBox, QCheckBox, QGraphicsColorizeEffect, QMenu)
 from PyQt6 import QtCore
-from PyQt6.QtGui import QColor, QTransform, QPixmap, QIcon, QPalette
+from PyQt6.QtGui import QColor, QTransform, QPixmap, QIcon, QFont, QCursor
 import pyqtgraph as pg
 from plaid.misc import q_to_tth, tth_to_q
 import plaid.resources
@@ -361,9 +361,15 @@ class PatternWidget(QWidget):
     sigXRangeChanged = QtCore.pyqtSignal(object)
     sigPatternHovered = QtCore.pyqtSignal(object)
     sigLinearRegionChangedFinished = QtCore.pyqtSignal(object)
+    sigRequestQToggle = QtCore.pyqtSignal()
     sigRequestLockPattern = QtCore.pyqtSignal(object)
     sigRequestSubtractPattern = QtCore.pyqtSignal()
-
+    sigRequestCorrelationMap = QtCore.pyqtSignal()
+    sigRequestDiffractionMap = QtCore.pyqtSignal()
+    sigRequestExportAvg = QtCore.pyqtSignal()
+    sigRequestExportCurrent = QtCore.pyqtSignal()
+    sigRequestExportAll = QtCore.pyqtSignal()
+    
     def __init__(self, parent=None):
         super().__init__(parent)
 
@@ -489,23 +495,59 @@ class PatternWidget(QWidget):
         background_color = self.plot_widget.backgroundBrush().color().name()
         self.toolbar.setStyleSheet(f"background: {background_color}; ")
         self.toolbar.setIconSize(QtCore.QSize(20,20))
+        layout.addWidget(self.toolbar)
 
-        # Add actions to the toolbar
+        # Add actions to the toolbar 
+        action = self.toolbar.addAction(f"2\u03B8\nQ") # unicode theta : \U000003B8
+        font = QFont()
+        font.setBold(True)
+        action.setFont(font)
+        action.setToolTip("Switch between 2theta and Q")
+        action.triggered.connect(lambda: self.sigRequestQToggle.emit())
+
+        self.toolbar.addSeparator()
+
         action = self.toolbar.addAction(f"\U0001F512") # padlock icon
         action.setToolTip("Lock current active pattern")
         action.triggered.connect(lambda: self.sigRequestLockPattern.emit(True))
-        layout.addWidget(self.toolbar)
 
         action = self.toolbar.addAction(f"\U0001F513") # padlock icon
         action.setToolTip("Unlock latest locked pattern")
         action.triggered.connect(lambda: self.sigRequestLockPattern.emit(False))
-        layout.addWidget(self.toolbar)
+
+        self.toolbar.addSeparator()
 
         icon = QIcon(":/icons/subtract.png")
-        action = self.toolbar.addAction(icon,None) #f"\U0001F4C9") # chart decreasing icon
+        action = self.toolbar.addAction(icon,None) 
         action.setToolTip("Subtract current pattern")
         action.triggered.connect(lambda: self.sigRequestSubtractPattern.emit())
-        layout.addWidget(self.toolbar)
+
+        self.toolbar.addSeparator()
+
+        icon = QIcon(":/icons/correlation.png")
+        action = self.toolbar.addAction(icon,None)
+        action.setToolTip("Show correlation map")
+        action.triggered.connect(lambda: self.sigRequestCorrelationMap.emit())
+        
+        icon = QIcon(":/icons/map.png")
+        action = self.toolbar.addAction(icon,None)
+        action.setToolTip("Show diffraction map")
+        action.triggered.connect(lambda: self.sigRequestDiffractionMap.emit())
+
+        self.toolbar.addSeparator()
+
+        action = self.toolbar.addAction(f"\U0001F4BE") # floppy disk icon
+        action.setToolTip("Export...")
+
+        menu = QMenu()
+        menu.setToolTipsVisible(False)
+        menu.addAction("Export average pattern", lambda: self.sigRequestExportAvg.emit())
+        menu.addAction("Export current pattern(s)", lambda: self.sigRequestExportCurrent.emit())
+        menu.addAction("Export all patterns", lambda: self.sigRequestExportAll.emit())
+
+        #self.toolbar.addAction(menu.menuAction())
+        action.setMenu(menu)
+        action.triggered.connect(lambda: menu.exec(QCursor.pos()))
 
 
     def add_pattern(self):
@@ -823,6 +865,8 @@ class PatternWidget(QWidget):
         from pyqtgraph configOptions.
         """
         self.plot_widget.setBackground('default')
+        background_color = self.plot_widget.backgroundBrush().color().name()
+        self.toolbar.setStyleSheet(f"background: {background_color}; ")
 
     def updateForeground(self):
         """
@@ -1116,6 +1160,7 @@ class BasicMapWidget(QWidget):
         """
         self.plot_widget.setBackground('default')
         self.histogram.setBackground('default')
+
 
     def updateForeground(self):
         """
