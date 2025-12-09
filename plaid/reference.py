@@ -27,10 +27,10 @@ class Reference():
                                  scattering_type='xray',output=False)
 
         d, I, reflections = self.xtl.Scatter.powder(scattering_type='xray',
-                                       units='dspace',
-                                       powder_average=True, 
-                                       min_overlap=0.02, 
-                                       energy_kev=E,)
+                                                    units='dspace',
+                                                    powder_average=True, 
+                                                    min_overlap=1e-6, # unclear how this exactly affects the returned reflections
+                                                    energy_kev=E,)
 
         self.hkl = reflections[::-1, :3].astype(int)  # Get the hkl indices
         self.d = reflections[::-1, 3]  # Get the d-spacings
