@@ -18,6 +18,9 @@ from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_signal_errors, ge
 from plaid.misc import q_to_tth, tth_to_q, get_map_shape_and_indices
 from plaid.dialogs import H5Dialog
 
+
+
+
 class AzintData():
     """
     A class to hold azimuthal integration data.
@@ -59,6 +62,7 @@ class AzintData():
 
         #self.aux_data = {} # {alias: np.array}
 
+
     def load(self, look_for_I0=True):
         """
         Determine the file type and load the data with the appropriate function.
@@ -69,7 +73,6 @@ class AzintData():
         Returns:
         - True if the data was loaded successfully, False otherwise.
         """
-
         if not all(fname.endswith('.h5') for fname in self.fnames):
             print("File(s) are not HDF5 files.")
             return False
@@ -81,6 +84,7 @@ class AzintData():
                 print("No valid load function found. Please provide a valid azimuthal integration file.")
                 return False
 
+        messages = [] # messages to return to caller. A workaround for threading issues with QMessageBox
         x = None
         I = np.array([[],[]])
         I_error = np.array([[],[]])
@@ -91,7 +95,8 @@ class AzintData():
                 return False
             if x is not None and x_.shape != x.shape:
                 print(f"Error: Inconsistent x shapes in {fname}.")
-                QMessageBox.critical(self.parent, "Error", f"Inconsistent x shapes in {fname}.")
+                messages.append((QMessageBox.critical,"Error", f"Inconsistent x shapes in {fname}."))
+                #QMessageBox.critical(self.parent, "Error", f"Inconsistent x shapes in {fname}.")
                 return False
             x = x_
             I = np.append(I, I_, axis=0) if I.size else I_
@@ -113,18 +118,23 @@ class AzintData():
             # the I0 data from a nxmonitor dataset in the file. Give the user
             # the option ignore the I0 data
             if self.load_I0_from_nxmonitor():
-                reply = QMessageBox.question(self.parent, "NXmonitor data found",
+                # reply = QMessageBox.question(None, "NXmonitor data found",
+                #                      "I0 data loaded from nxmonitor dataset. Do you want to use it?",
+                #                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                #                        QMessageBox.StandardButton.Yes)
+                # if reply == QMessageBox.StandardButton.No:
+                #     self.I0 = None
+                messages.append((QMessageBox.question,"NXmonitor data found",
                                      "I0 data loaded from nxmonitor dataset. Do you want to use it?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                       QMessageBox.StandardButton.Yes)
-                if reply == QMessageBox.StandardButton.No:
-                    self.I0 = None
+                                       QMessageBox.StandardButton.Yes))
         if self._load_func == self._load_azint:
             # If the data is loaded from a nxazint file, attempts to load
             # the map shape and pixel indices from a nxtransformations group in the file.
             self.load_map_shape_and_indices()
 
-        return True
+
+        return True, messages
     
     def load_I0_from_nxmonitor(self):
         """

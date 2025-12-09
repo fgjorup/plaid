@@ -41,8 +41,7 @@ from plaid.misc import q_to_tth, tth_to_q, get_divisors
 from plaid.data_containers import AzintData, AuxData
 from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
-
-
+from plaid.qt_worker import run_in_thread
 
 
 # # debug fn to show who is calling what and when to find out why.
@@ -58,25 +57,8 @@ import plaid.resources
 # TODO/IDEAS
 # - Clean up the code and restructure
 # - Expand the Help menu 
-# - Export patterns
-#     > Add an "Export average pattern" toolbar button
-#     > Add an "Export selected pattern(s)" toolbar button
-#     > Add an "Export all patterns" toolbar button
-# - handle arbitrary .h5 file drag drop
-#     > if the dropped file is recognized as a azint file, load it and add it to the file tree
-#     > if not, prompt the user to load it as auxiliary data. Future versions could allow for custom azint readers?
-# - add an option to "group"  data files in the file tree. Perhaps "append file below" and "insert file above" actions to group files together?
-#     > Find a way to handle I0 data
-# - save additional settings like default path(s), dock widget positions, etc.
 # - optimize memory usage and performance for large datasets
-# - add more tooltips
 # - add a "reduction factor" option to reduce the effective time resolution of the data (I, I0, and aux data)
-# - add a "show map" option
-#    > show a map in a separate dock widget
-#    > change the line positions and pattern when a pixel is clicked
-#    > select roi in the pattern widget
-#    > get the pixel coordinates the an nxsample/nxtransformation group
-#      or ask the user to specify a rectangle shape - Implement map_shape and map_indices in AzintData
 # - Crop data option? Perhaps save cropped .h5 copy?
 
 ALLOW_EXPORT_ALL_PATTERNS = True
@@ -786,9 +768,58 @@ class MainWindow(QMainWindow):
         # with an item from the file tree
         is_initial_load = item is None  
         self.azint_data = AzintData(self,file_path)
-        if not self.azint_data.load(look_for_I0=is_initial_load):
+
+        self._success = False # flag to indicate if the load was successful
+        # show a progress dialog while loading the file
+        progress = QProgressDialog("Loading data...", None, 0, 0, self)
+        progress.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        # disable the close button
+        #progress.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, False)
+        progress.setWindowTitle("Please wait")
+        progress.show()
+
+        # create an event loop to wait for the loading to finish
+        _loop = QtCore.QEventLoop()
+
+        # define the on_done callback function
+        def on_done(success, result):
+            """
+            process any messages returned by the load function
+            This is a workaround to show message boxes from the worker thread
+
+            success: bool - whether the load was successful (from the worker thread)
+            result: tuple - (bool, list) - the first element is whether the load was
+                            successful (from the load function), the second element 
+                            is a list of messages to process [func, arg1, arg2, ...]
+            """
+            # 
+            messages = result[1]
+            for msg in messages:
+                func = msg[0]
+                args = msg[1:]
+                reply = func(self, *args)
+                # if the user chose to not use the I0 data, set it to None
+                if reply == QMessageBox.StandardButton.No:
+                    self.azint_data.I0 = None
+            self._success = success and result[0]
+            progress.reset()
+            _loop.quit()
+
+            
+
+        # run the load function in a separate thread
+        worker = run_in_thread(self.azint_data.load, args=None, kwargs={"look_for_I0": is_initial_load}, on_done=on_done)
+  
+        # start the event loop to wait for the loading to finish
+        _loop.exec()
+
+        if not self._success:
             QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
             return
+
+        #if not self.azint_data.load(look_for_I0=is_initial_load):
+        #    QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
+        #    return
         
         # clear the auxiliary plot and check for I0 and auxiliary data
         self.auxiliary_plot.clear()  # Clear the previous plot
