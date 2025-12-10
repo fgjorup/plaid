@@ -8,7 +8,7 @@ Author: Frederik H. Gjørup
 Institution: Aarhus University, Denmark & MAX IV Laboratory, Lund University, Sweden
 """
 
-__version__ = '0.0.12'
+__version__ = '0.0.13'
 __author__ = 'Frederik H Gjørup'
 __authors__ = ['Frederik H. Gjørup']
 __email__ = 'fgjorup@chem.au.dk'
