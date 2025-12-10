@@ -481,9 +481,14 @@ class AzintData():
                 is_q = True
             I = data_group['xrd'][:] # [radial bins, fast_axis, slow_axis]
         self.map_shape = I.shape[1:]  # (fast_axis, slow_axis)
-        self.map_indices = np.arange(I.shape[1]*I.shape[2])
+        # self.map_indices = np.arange(I.shape[1]*I.shape[2])
+        self.map_indices = list(range(I.shape[1]*I.shape[2]))
         # transpose and reshape I
         I = np.transpose(I, (1,2,0)).reshape(-1, I.shape[0])  # [num_patterns, radial bins]
+        # in the case of xrd-ct data, an extra first column might be present as absorption data
+        # in that case, remove it 
+        if I.shape[1] - x.shape[0] == 1:
+            I = I[:, 1:]  # Remove first column if x has one less element than I
         return x, I, None, is_q, None   
     
     def _load_dialog(self, fname):

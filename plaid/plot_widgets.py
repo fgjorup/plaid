@@ -64,6 +64,7 @@ class HeatmapWidget(QWidget):
         self.active_line = None
         self.use_log_scale = False  # Flag to use logarithmic scale for the heatmap
         self.color_cycle = colors
+        self.ticks_lut = None
         # Create a layout
         layout = QHBoxLayout(self)
 
@@ -136,6 +137,13 @@ class HeatmapWidget(QWidget):
         if self.use_log_scale:
             z = np.log10(z,out=np.zeros_like(z), where=(z>0))  # Apply log scale to the data
         self.image_item.setImage(z)
+
+        # create a ticks lookup table to relate x values in scattering units to pixel indices
+        _x = np.arange(0, x[0], np.mean(np.diff(x[:10])))
+        x_ = np.arange(x[-1], np.ceil(x[-1]/10)*10+np.mean(np.diff(x[-10:])), np.mean(np.diff(x[-10:])))
+        self.ticks_lut = np.array([np.append(np.append(_x,x),x_)[::10],
+                              np.arange(-_x.shape[0], x.shape[0]+x_.shape[0], 10)])
+        
         self._set_xticks(x)
 
         # update the limits of the plot
@@ -178,14 +186,22 @@ class HeatmapWidget(QWidget):
         x_ = np.arange(0, x_max+step, step)
         x_ = x_[x_ >= x_min-step]
         x_ = x_[x_ <= x_max+step]
-        if step >= 1:
-            self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.0f}") for xi in x_]])
-        elif step >= 0.1:
-            self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.1f}") for xi in x_]])
-        elif step >= 0.01:
-            self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.2f}") for xi in x_]])
-        else:
-            self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.3f}") for xi in x_]])
+
+        # get the tick positions in pixel indices using the lookup table
+        tick_pos = np.interp(x_, self.ticks_lut[0], self.ticks_lut[1])
+        # determine number of decimals based on step size
+        decimals = int(np.ceil(-np.log10(step)))
+        # set the ticks with tick positions and formatted labels
+        self.x_axis.setTicks([[(idx+0.5, f"{x_[i]:.{decimals}f}") for i, idx in enumerate(tick_pos)]])
+
+        # if step >= 1:
+        #     self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.0f}") for xi in x_]])
+        # elif step >= 0.1:
+        #     self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.1f}") for xi in x_]])
+        # elif step >= 0.01:
+        #     self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.2f}") for xi in x_]])
+        # else:
+        #     self.x_axis.setTicks([[(np.argmin(np.abs(x - xi))+0.5, f"{xi:.3f}") for xi in x_]])
 
         # emit the signal for x range change in the axis units (2theta or q)
         self.sigXRangeChanged.emit((x_min, x_max))
