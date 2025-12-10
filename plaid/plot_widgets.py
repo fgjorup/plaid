@@ -667,7 +667,8 @@ class PatternWidget(QWidget):
     def add_reference(self, hkl, x, I):
         """Add a reference pattern to the plot."""
         color = self.color_cycle[::-1][len(self.reference_items) % len(self.color_cycle)]
-        reference_item = pg.PlotDataItem(pen=color,connect='pairs')
+        pen = pg.mkPen(color=color) 
+        reference_item = pg.PlotDataItem(pen=pen, connect='pairs')
         reference_item.setCurveClickable(True)
         reference_item.setZValue(-1)  # Set a lower z-value to draw below the patterns
         reference_item.sigClicked.connect(self.reference_clicked)  # Connect the click signal to a function
@@ -713,7 +714,7 @@ class PatternWidget(QWidget):
             return
         hkl = ' '.join(hkls[idx].astype(str))  # Convert hkl indices to string
         # get the color of the clicked item
-        color = item.opts['pen']
+        color = item.opts['pen'].color()
         # Show the hkl indices in the text item
         self.hkl_text_item.setColor(color)
         self.hkl_text_item.setText(f"({hkl})")
