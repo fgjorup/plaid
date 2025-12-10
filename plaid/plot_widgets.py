@@ -513,11 +513,13 @@ class PatternWidget(QWidget):
 
         self.toolbar.addSeparator()
 
-        action = self.toolbar.addAction(f"\U0001F512") # padlock icon
+        icon = QIcon(":/icons/lock.png")
+        action = self.toolbar.addAction(icon,None)   #f"\U0001F512") # padlock icon
         action.setToolTip("Lock current active pattern")
         action.triggered.connect(lambda: self.sigRequestLockPattern.emit(True))
 
-        action = self.toolbar.addAction(f"\U0001F513") # padlock icon
+        icon = QIcon(":/icons/unlock.png")
+        action = self.toolbar.addAction(icon,None)   #f"\U0001F513") # padlock icon
         action.setToolTip("Unlock latest locked pattern")
         action.triggered.connect(lambda: self.sigRequestLockPattern.emit(False))
 
@@ -542,7 +544,8 @@ class PatternWidget(QWidget):
 
         self.toolbar.addSeparator()
 
-        action = self.toolbar.addAction(f"\U0001F4BE") # floppy disk icon
+        icon = QIcon(":/icons/save_pattern.png")
+        action = self.toolbar.addAction(icon,None)
         action.setToolTip("Export...")
 
         menu = QMenu()
