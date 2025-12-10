@@ -1486,7 +1486,7 @@ class MainWindow(QMainWindow):
                 self.diffraction_map.set_map_shape_options(divisors)
             else:
                 # self.diffraction_map.set_map_shape_options([self.azint_data.map_shape[0],])
-                self.diffraction_map.set_map_shape_options([*self.azint_data.map_shape])
+                self.diffraction_map.set_map_shape_options([*self.azint_data.map_shape],current_index=0)
             self.diffraction_map.fnames = self.azint_data.fnames
 
         roi = self.pattern.get_linear_region_roi()

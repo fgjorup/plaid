@@ -392,10 +392,12 @@ class AzintData():
     def _determine_load_func(self, fname):
         """Determine the appropriate load function based on the file structure."""
         with h5.File(fname, 'r') as f:
-            if 'entry/data1d' in f:
-                self._load_func =  self._load_azint_old
-            elif 'entry/data' in f:
+            if 'entry/data' in f:
                 self._load_func =   self._load_azint
+            elif 'entry/data1d' in f:
+                self._load_func =  self._load_azint_old
+            elif 'entry/dataxrd1d' in f:
+                self._load_func =   self._load_DM_map
             elif 'I' in f:
                 self._load_func =   self._load_DM_old
             else:
@@ -466,6 +468,23 @@ class AzintData():
                 is_q = True
             I = f['I'][:]
         return x, I, None, is_q, None
+    
+    def _load_DM_map(self, fname):
+        """Load azimuthal integration data from a DanMAX map HDF5 file."""
+        with h5.File(fname, 'r') as f:
+            data_group = f['entry/dataxrd1d']
+            if 'tth' in data_group:
+                x = data_group['tth'][:]
+                is_q = False
+            elif 'q' in data_group:
+                x = data_group['q'][:]
+                is_q = True
+            I = data_group['xrd'][:] # [radial bins, fast_axis, slow_axis]
+        self.map_shape = I.shape[1:]  # (fast_axis, slow_axis)
+        self.map_indices = np.arange(I.shape[1]*I.shape[2])
+        # transpose and reshape I
+        I = np.transpose(I, (1,2,0)).reshape(-1, I.shape[0])  # [num_patterns, radial bins]
+        return x, I, None, is_q, None   
     
     def _load_dialog(self, fname):
         """

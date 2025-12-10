@@ -1278,7 +1278,7 @@ class DiffractionMapWidget(BasicMapWidget):
         self.set_data(im)
         self.autoRange()
 
-    def set_map_shape_options(self, options):
+    def set_map_shape_options(self, options,current_index=None):
         """Set the options for the map shape combo boxes. Options should be a list of integers."""
         self.map_shape_combo.clear()
 
@@ -1288,8 +1288,10 @@ class DiffractionMapWidget(BasicMapWidget):
             shape_0 = options[i]
             shape_1 = options[-(i + 1)]
             self.map_shape_combo.addItem(f"{shape_0} × {shape_1}", (shape_0,shape_1))
-        
-        self.map_shape_combo.setCurrentIndex(len(options)//2)
+        if current_index is not None and 0 <= current_index < len(options):
+            self.map_shape_combo.setCurrentIndex(current_index)
+        else:
+            self.map_shape_combo.setCurrentIndex(len(options)//2)
         self.map_shape = self.map_shape_combo.itemData(self.map_shape_combo.currentIndex())
 
     def map_shape_changed(self, index):
