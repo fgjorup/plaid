@@ -64,15 +64,21 @@ from plaid.qt_worker import run_in_thread
 ALLOW_EXPORT_ALL_PATTERNS = True
 PLOT_I0 = True
 
-colors = [
-        '#AAAA00',  # Yellow
-        '#AA00AA',  # Magenta
-        '#00AAAA',  # Cyan
-        '#AA0000',  # Red
-        '#00AA00',  # Green
-        "#0066FF",  # Blue
-        '#AAAAAA',  # Light Gray
-        ]
+colors = ["#C41E3A", # Crimson Red
+          "#FF8C00", # Dark Orange
+          "#228B22", # Forest Green
+          "#4169E1", # Royal Blue
+          "#8B008B", # Dark Magenta
+          "#2F4F4F", # Dark Slate Gray
+         ]
+        # '#AAAA00',  # Yellow
+        # '#AA00AA',  # Magenta
+        # '#00AAAA',  # Cyan
+        # '#AA0000',  # Red
+        # '#00AA00',  # Green
+        # "#0066FF",  # Blue
+        # '#AAAAAA',  # Light Gray
+        # ]
 
 # Update checking
 def check_for_updates():
