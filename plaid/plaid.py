@@ -60,6 +60,10 @@ from plaid.qt_worker import run_in_thread
 # - optimize memory usage and performance for large datasets
 # - add a "reduction factor" option to reduce the effective time resolution of the data (I, I0, and aux data)
 # - Crop data option? Perhaps save cropped .h5 copy?
+# - Restructure data loading
+#    > make it easier to specify custom loading functions for different file types
+#    > Read files in chunks to allow cancelling loading of large files
+#    > Update plots on the fly during reading?
 
 ALLOW_EXPORT_ALL_PATTERNS = True
 PLOT_I0 = True
