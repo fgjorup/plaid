@@ -65,6 +65,7 @@ from plaid.qt_worker import run_in_thread
 #    > Read files in chunks to allow cancelling loading of large files
 #    > Update plots on the fly during reading?
 
+
 ALLOW_EXPORT_ALL_PATTERNS = True
 PLOT_I0 = True
 
@@ -1181,9 +1182,9 @@ class MainWindow(QMainWindow):
             self.heatmap.set_data(x, self.azint_data.get_I().T)
             self.pattern.x = x
             self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.get_average_I())
-            for pattern_item in self.pattern.pattern_items:
-                _x, y = pattern_item.getData()
-                pattern_item.setData(x=x, y=y)
+            for index in range(len(self.pattern.pattern_items)):
+                _x, y = self.pattern.get_data(index)
+                self.pattern.set_data(x=x, y=y, index=index)
             for ref_item in self.pattern.reference_items:
                 _x, _y = ref_item.getData()
                 _x = tth_to_q(_x, self.E)
@@ -1201,9 +1202,9 @@ class MainWindow(QMainWindow):
             self.heatmap.set_data(x, self.azint_data.get_I().T)
             self.pattern.x = x
             self.pattern.avg_pattern_item.setData(x=x, y=self.azint_data.get_average_I())
-            for pattern_item in self.pattern.pattern_items:
-                _x, y = pattern_item.getData()
-                pattern_item.setData(x=x, y=y)
+            for index in range(len(self.pattern.pattern_items)):
+                _x, y = self.pattern.get_data(index)
+                self.pattern.set_data(x=x, y=y, index=index)
             for ref_item in self.pattern.reference_items:
                 _x, _y = ref_item.getData()
                 _x = q_to_tth(_x, self.E)
@@ -1213,6 +1214,9 @@ class MainWindow(QMainWindow):
                 if is_Q:
                     self.pattern.locked_pattern_Q_to_tth(i, E)
                     locked_pattern[0] = False  # update the is_Q status
+        # get the updated x-range from the heatmap
+        x_range = self.heatmap.get_xrange()
+        self.pattern.set_xrange(x_range)
 
     def set_active_pattern_as_background(self):
         """Set the currently active pattern as the background to be subtracted from all patterns."""

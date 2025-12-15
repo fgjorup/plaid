@@ -144,7 +144,10 @@ class HeatmapWidget(QWidget):
         self.ticks_lut = np.array([np.append(np.append(_x,x),x_)[::10],
                               np.arange(-_x.shape[0], x.shape[0]+x_.shape[0], 10)])
         
-        self._set_xticks(x)
+
+        # get the current view range
+        vrange = self.plot_widget.getViewBox().viewRange()[0]
+        self._set_xticks(vrange=vrange)
 
         # update the limits of the plot
         self.plot_widget.setLimits(xMin=-len(x)*.1, xMax=len(x)*1.1, yMin=-self.n*0.02, yMax=self.n*1.02)
@@ -228,6 +231,15 @@ class HeatmapWidget(QWidget):
         self.plot_widget.setXRange(x_min_idx, x_max_idx, padding=0)
         # reconnect the signal
         self.plot_widget.sigXRangeChanged.connect(self._set_xticks)
+
+    def get_xrange(self):
+        """Get the x-axis range."""
+        if self.x is None:
+            return None
+        view_range = self.plot_widget.getViewBox().viewRange()[0]
+        x_min_idx = int(np.clip(view_range[0], 0, len(self.x)-1))
+        x_max_idx = int(np.clip(view_range[1], 0, len(self.x)-1))
+        return (self.x[x_min_idx], self.x[x_max_idx])
 
     def set_h_line_pos(self, index, pos):
         """Set the position of a horizontal line."""
@@ -588,6 +600,10 @@ class PatternWidget(QWidget):
         """Remove a pattern item from the plot."""
         pattern = self.pattern_items.pop(index)
         self.plot_widget.getPlotItem().removeItem(pattern)
+
+    def get_data(self, index=-1):
+        """Get the data for the pattern."""
+        return self.pattern_items[index].getData()
 
     def set_data(self, x=None, y=None,index=-1):
         """Set the data for the pattern."""
