@@ -803,7 +803,13 @@ class MainWindow(QMainWindow):
                             successful (from the load function), the second element 
                             is a list of messages to process [func, arg1, arg2, ...]
             """
-            # 
+            #
+            if isinstance(result, Exception):
+                QMessageBox.critical(self, "Error", f"An error occurred while loading the file: {str(result)}")
+                self._success = False
+                progress.reset()
+                _loop.quit()
+                return
             messages = result[1]
             for msg in messages:
                 func = msg[0]

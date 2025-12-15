@@ -12,7 +12,7 @@ import numpy as np
 from PyQt6.QtWidgets import (QVBoxLayout, QHBoxLayout, QWidget, QToolBar, QLabel, QComboBox,
                             QDoubleSpinBox, QCheckBox, QGraphicsColorizeEffect, QMenu)
 from PyQt6 import QtCore
-from PyQt6.QtGui import QColor, QTransform, QPixmap, QIcon, QFont, QCursor
+from PyQt6.QtGui import QColor, QTransform, QPixmap, QIcon, QFont, QCursor, QAction
 import pyqtgraph as pg
 from plaid.misc import q_to_tth, tth_to_q
 import plaid.resources
@@ -1120,6 +1120,8 @@ class BasicMapWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.fnames = []  # used to keep track of which dataset is used
+        self.transpose = False
+
         # Create a layout
         vlayout = QVBoxLayout(self)
 
@@ -1166,10 +1168,19 @@ class BasicMapWidget(QWidget):
 
         self.plot_widget.getPlotItem().mouseDoubleClickEvent = self.image_double_clicked
 
+        # get the context menu of the plot widget and add an option to transpose the map
+        menu = self.plot_widget.getPlotItem().getViewBox().getMenu(None)
+        action_transpose = QAction("Transpose",self)
+        menu.insertAction(menu.actions()[1],action_transpose)
+        action_transpose.triggered.connect(self.toggle_transpose)
+
+
     def set_data(self, im):
         """Set the data for the map."""
         if im is None:
             return
+        if self.transpose:
+            im = im.T
         self.image_item.setImage(im)
 
     def image_double_clicked(self, event):
@@ -1223,6 +1234,18 @@ class BasicMapWidget(QWidget):
     def autoRange(self):
         """Auto range the plot to fit the image."""
         self.plot_widget.autoRange()
+
+    def toggle_transpose(self):
+        """Transpose the map."""
+        # new transpose state
+        _transpose = not self.transpose
+        # always set transpose to True when updating the data
+        # to either transpose or "un-transpose" the image
+        self.transpose = True
+        im = self.image_item.image
+        self.set_data(im)
+        # set the transpose state
+        self.transpose = _transpose
 
 class CorrelationMapWidget(BasicMapWidget):
     """
@@ -1289,7 +1312,6 @@ class DiffractionMapWidget(BasicMapWidget):
         self.flip_rows_check.checkStateChanged.connect(self.update_map)
         self.toolbar.addWidget(self.flip_rows_check)
 
-
         self.x_axis.setLabel("x-axis (px)")
         self.y_axis.setLabel("y-axis (px)")
 
@@ -1355,6 +1377,8 @@ class DiffractionMapWidget(BasicMapWidget):
         """Update the aspect ratio of the diffraction map."""
         aspect_ratio = self.aspect_ratio_spin.value()
         self.plot_widget.getPlotItem().setAspectLocked(lock=True, ratio=aspect_ratio)
+
+    
 
 
     
