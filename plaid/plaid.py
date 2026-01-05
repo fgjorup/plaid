@@ -401,6 +401,7 @@ class MainWindow(QMainWindow):
         self.cif_tree.sigItemAdded.connect(self.add_reference)
         self.cif_tree.sigItemChecked.connect(self.toggle_reference)
         self.cif_tree.sigItemDoubleClicked.connect(self.rescale_reference)
+        self.cif_tree.sigItemRemoved.connect(self.remove_reference)
         # Connect the heatmap signals to the appropriate slots
         self.heatmap.sigHLineMoved.connect(self.hline_moved)
         self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange)
@@ -668,6 +669,14 @@ class MainWindow(QMainWindow):
 
         if file in self.aux_data.keys():
             del self.aux_data[file]
+
+    def remove_reference(self, index):
+        """
+        Handle the removal of a reference from the CIF tree,
+        by removing it from the pattern plot.
+        Called when a reference is removed from the CIF tree.
+        """
+        self.pattern.remove_reference(index)
 
     def resizeEvent(self, event):
         """Handle the resize event to update the pattern width."""
@@ -995,11 +1004,12 @@ class MainWindow(QMainWindow):
         if Qmax is None:
             Qmax = self.getQmax()
         self.ref = Reference(cif_file,E=self.E, Qmax=Qmax)
-        self.plot_reference()
+        color = self.cif_tree.get_next_color()
+        self.plot_reference(color=color)
         tooltip = f"{self.ref.get_spacegroup_info()}\n{self.ref.get_cell_parameter_info()}"
         self.cif_tree.set_latest_item_tooltip(tooltip)
 
-    def plot_reference(self, Qmax=None, dmin=None):
+    def plot_reference(self, Qmax=None, dmin=None, color=None):
         """Plot the reference pattern in the pattern plot."""
         if Qmax is None:
             Qmax = self.getQmax()
@@ -1014,7 +1024,7 @@ class MainWindow(QMainWindow):
         else:
             # Convert d to 2theta
             x = np.degrees(2 * np.arcsin((12.398 / self.E) / (2 * d)))
-        self.pattern.add_reference(hkl, x, I)
+        self.pattern.add_reference(hkl, x, I,color=color)
 
     def toggle_reference(self, index, is_checked):
         """

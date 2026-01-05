@@ -330,12 +330,14 @@ class CIFTreeWidget(QWidget):
     sigItemAdded = QtCore.pyqtSignal(str)
     sigItemChecked = QtCore.pyqtSignal(int, bool)
     sigItemDoubleClicked = QtCore.pyqtSignal(int, str)
+    sigItemRemoved = QtCore.pyqtSignal(int)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
         self.files = []  # List to store CIF file paths
 
         self.color_cycle = colors
+        self.color_offset = 0
         # Create a layout
         layout = QVBoxLayout(self)
         # Create a file tree view
@@ -345,6 +347,8 @@ class CIFTreeWidget(QWidget):
         self.file_tree.setRootIsDecorated(False)
         self.file_tree.itemChanged.connect(self.itemChecked)
         self.file_tree.itemDoubleClicked.connect(self.itemDoubleClicked)
+        self.file_tree.setContextMenuPolicy(QtCore.Qt.ContextMenuPolicy.CustomContextMenu)
+        self.file_tree.customContextMenuRequested.connect(self.customMenuEvent)
         layout.addWidget(self.file_tree)
 
         self.setAcceptDrops(True)
@@ -370,9 +374,23 @@ class CIFTreeWidget(QWidget):
         item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsUserCheckable)
         item.setCheckState(0,QtCore.Qt.CheckState.Checked)
         # set the item color
-        item.setForeground(0, pg.mkColor(self.color_cycle[len(self.files)-1 % len(self.color_cycle)]))
+        #i = len(self.files)-1+self.color_offset
+        # item.setForeground(0, pg.mkColor(self.color_cycle[i % len(self.color_cycle)]))
+        item.setForeground(0, self.get_next_color())
         self.file_tree.addTopLevelItem(item)
         self.sigItemAdded.emit(file_path)
+
+    def remove_item(self, item):
+        """Remove a CIF file from the tree widget."""
+        index = self.file_tree.indexOfTopLevelItem(item)
+        if index == -1:
+            return
+        # remove the file from the list
+        file_path = self.files.pop(index)
+        # remove the item from the tree
+        self.file_tree.takeTopLevelItem(index)
+        self.color_offset += 1
+        self.sigItemRemoved.emit(index)
 
     def dragEnterEvent(self, event):
         """Handle drag enter event."""
@@ -403,6 +421,28 @@ class CIFTreeWidget(QWidget):
             return
         self.sigItemDoubleClicked.emit(index,item.text(0))
 
+    def customMenuEvent(self, pos):
+        """Handle the custom context menu event."""
+        # determine the item at the position
+        item = self.file_tree.itemAt(pos)
+        if item is None:    
+            return
+        # check if the item is a top-level item
+        if item.parent() is not None:
+            return
+        # create a context menu for the item
+        menu = QMenu(self)
+        # # add an action to reload the CIF file
+        # reload_action = menu.addAction("Reload CIF")
+        # reload_action.setToolTip("Reload the selected CIF file")
+        # reload_action.triggered.connect(lambda: print("reload action triggered"))  # Placeholder for reload action
+        # add an action to remove the item
+        remove_action = menu.addAction("Remove")
+        remove_action.setToolTip("Remove the selected CIF file from the tree")
+        remove_action.triggered.connect(lambda: self.remove_item(item))  # Placeholder for remove action
+        menu.exec(self.file_tree.viewport().mapToGlobal(pos))
+        menu.deleteLater()  # Clean up the menu after use
+
     def set_latest_item_tooltip(self, tooltip):
         """Set the tooltip for the latest added item."""
         if not self.files:
@@ -414,7 +454,13 @@ class CIFTreeWidget(QWidget):
     def set_color_cycle(self,color_cycle):
         """Set the color cycle for the plot items."""
         self.color_cycle = color_cycle
+        self.color_offset = 0
         self._update_item_colors()
+
+    def get_next_color(self):
+        """Get the next color from the color cycle."""
+        i = len(self.files)-1+self.color_offset
+        return pg.mkColor(self.color_cycle[i % len(self.color_cycle)])
 
     def _update_item_colors(self):
         """Update the colors of the first column items based on the color cycle."""

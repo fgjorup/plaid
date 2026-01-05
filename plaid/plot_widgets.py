@@ -680,9 +680,10 @@ class PatternWidget(QWidget):
         self.legend.removeItem(pattern)
         
 
-    def add_reference(self, hkl, x, I):
+    def add_reference(self, hkl, x, I,color=None):
         """Add a reference pattern to the plot."""
-        color = self.color_cycle[::-1][len(self.reference_items) % len(self.color_cycle)]
+        if color is None:
+            color = self.color_cycle[::-1][len(self.reference_items) % len(self.color_cycle)]
         pen = pg.mkPen(color=color) 
         reference_item = pg.PlotDataItem(pen=pen, connect='pairs')
         reference_item.setCurveClickable(True)
@@ -700,6 +701,12 @@ class PatternWidget(QWidget):
         else:
             scale = self.y.max() if self.y.max()>0 else 1.
         reference_item.setData(x, I*scale)  # Initialize with test data
+
+    def remove_reference(self, index=-1):
+        """Remove a reference pattern from the plot."""
+        reference_item = self.reference_items.pop(index)
+        self.plot_widget.getPlotItem().removeItem(reference_item)
+        del self.reference_hkl[reference_item]
 
     def toggle_reference(self, index, is_checked):
         """Toggle the visibility of a reference pattern."""
