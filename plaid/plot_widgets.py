@@ -698,7 +698,7 @@ class PatternWidget(QWidget):
         if self.y is None:
             scale = 100
         else:
-            scale = self.y.max() 
+            scale = self.y.max() if self.y.max()>0 else 1.
         reference_item.setData(x, I*scale)  # Initialize with test data
 
     def toggle_reference(self, index, is_checked):
