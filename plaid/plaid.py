@@ -37,7 +37,7 @@ from plaid.trees import FileTreeWidget, CIFTreeWidget
 from plaid.dialogs import H5Dialog, ExportSettingsDialog, ColorCycleDialog
 from plaid.reference import Reference
 from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget, DiffractionMapWidget
-from plaid.misc import q_to_tth, tth_to_q, get_divisors
+from plaid.misc import q_to_tth, tth_to_q, d_to_q, d_to_tth, get_divisors
 from plaid.data_containers import AzintData, AuxData
 from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
@@ -168,7 +168,7 @@ def save_recent_refs_settings(recent_refs):
     recent_refs = [r for r in recent_refs if r]  # Remove empty entries
     # Limit to the last 10 references
     if len(recent_refs) > 10:
-        recent_refs = recent_refs[-10:]
+        recent_refs = recent_refs[:10]
     # Save the recent references
     settings.setValue("recent-references", recent_refs)
     settings.endGroup()
@@ -231,7 +231,7 @@ class MainWindow(QMainWindow):
         self.E = None  # Energy in keV
         self.is_Q = False # flag to indicate if the data is in Q space (True) or 2theta space (False)
 
-        self.azint_data = AzintData()
+        self.azint_data = AzintData(self)
         self.aux_data = {}
 
         self.locked_patterns = []  # list of (is_Q, E) tuples for locked patterns
@@ -398,10 +398,11 @@ class MainWindow(QMainWindow):
         self.file_tree.sigI0DataRequested.connect(self.load_I0_data)
         self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data)
         # Connect the CIF tree signals to the appropriate slots
-        self.cif_tree.sigItemAdded.connect(self.add_reference)
-        self.cif_tree.sigItemChecked.connect(self.toggle_reference)
-        self.cif_tree.sigItemDoubleClicked.connect(self.rescale_reference)
-        self.cif_tree.sigItemRemoved.connect(self.remove_reference)
+        self.cif_tree.sigItemAdded.connect(self.add_reference)              # --> str
+        self.cif_tree.sigItemChecked.connect(self.toggle_reference)         # --> int, bool
+        self.cif_tree.sigItemDoubleClicked.connect(self.rescale_reference)  # --> int, str
+        self.cif_tree.sigItemRemoved.connect(self.remove_reference)         # --> int
+        self.cif_tree.sigItemReloadRequested.connect(self.reload_reference) # --> int
         # Connect the heatmap signals to the appropriate slots
         self.heatmap.sigHLineMoved.connect(self.hline_moved)
         self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange)
@@ -1008,23 +1009,48 @@ class MainWindow(QMainWindow):
         self.plot_reference(color=color)
         tooltip = f"{self.ref.get_spacegroup_info()}\n{self.ref.get_cell_parameter_info()}"
         self.cif_tree.set_latest_item_tooltip(tooltip)
-
-    def plot_reference(self, Qmax=None, dmin=None, color=None):
-        """Plot the reference pattern in the pattern plot."""
+        
+    def get_reference_reflections(self, Qmax=None, dmin=None):
+        """
+        Get the reference reflections from the current reference pattern,
+        converted to the current x-axis units.
+        """
         if Qmax is None:
             Qmax = self.getQmax()
         hkl, d, I = self.ref.get_reflections(Qmax=Qmax, dmin=dmin)
         if len(hkl) == 0:
             QMessageBox.warning(self, "No Reflections", "No reflections found in the reference pattern.")
             return
-        
         if self.is_Q:
             # Convert d to Q
-            x = 4*np.pi/d
+            x = d_to_q(d)
         else:
             # Convert d to 2theta
-            x = np.degrees(2 * np.arcsin((12.398 / self.E) / (2 * d)))
+            x = d_to_tth(d, self.E)
+        return hkl, x, I
+
+    def plot_reference(self, Qmax=None, dmin=None, color=None):
+        """Plot the reference pattern in the pattern plot."""
+        hkl, x, I = self.get_reference_reflections(Qmax=Qmax, dmin=dmin)
         self.pattern.add_reference(hkl, x, I,color=color)
+
+    def reload_reference(self,index, Qmax=None):
+        """Reload the reference pattern at the given index from the cif tree."""
+        cif_file = self.cif_tree.files[index]
+        # check that the cif file still exists
+        if not os.path.exists(cif_file):
+            QMessageBox.critical(self, "Error", f"CIF file not found: {cif_file}")
+            return
+        item = self.cif_tree.file_tree.topLevelItem(index)
+        if Qmax is None:
+            Qmax = self.getQmax()
+        self.ref = Reference(cif_file,E=self.E, Qmax=Qmax)
+        hkl, x, I = self.get_reference_reflections(Qmax=Qmax)
+        self.pattern.update_reference(index, hkl, x, I)
+        # update the tooltip
+        tooltip = f"{self.ref.get_spacegroup_info()}\n{self.ref.get_cell_parameter_info()}"
+        item.setToolTip(0, tooltip)
+        self.statusBar().showMessage(f"Reloaded reference from {cif_file}")
 
     def toggle_reference(self, index, is_checked):
         """
@@ -1039,6 +1065,7 @@ class MainWindow(QMainWindow):
         This method is called when a reference item is double-clicked in the CIF tree.
         """
         self.pattern.rescale_reference(index)
+        self.statusBar().showMessage(f"Rescaled {name}")
 
     def load_I0_data(self, aname=None, fname=None):
         """Load auxillary data as I0. Called when the user requests I0 data from the file tree."""

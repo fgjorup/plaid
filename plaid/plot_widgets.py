@@ -678,7 +678,6 @@ class PatternWidget(QWidget):
         pattern = self.locked_pattern_items.pop(-1)
         self.plot_widget.getPlotItem().removeItem(pattern)
         self.legend.removeItem(pattern)
-        
 
     def add_reference(self, hkl, x, I,color=None):
         """Add a reference pattern to the plot."""
@@ -692,7 +691,16 @@ class PatternWidget(QWidget):
         self.plot_widget.getPlotItem().addItem(reference_item)
         self.reference_items.append(reference_item)
         self.reference_hkl[reference_item] = (x,hkl)  # Store the hkl indices for the reference item
-        # tth = np.degrees(np.arcsin(lambd/(2*d)))*2
+        self._set_reference_data(reference_item, x, I)
+
+    def update_reference(self, index, hkl, x, I):
+        """Update a reference pattern in the plot."""
+        reference_item = self.reference_items[index]
+        self.reference_hkl[reference_item] = (x,hkl)  # Update the hkl indices for the reference item
+        self._set_reference_data(reference_item, x, I)
+
+    def _set_reference_data(self, item, x, I):
+        """Set the data for a reference pattern item."""
         x = np.repeat(x,2)
         I = np.repeat(I,2)
         I[::2] = 0  # Set the intensity to 0 for the first point of each pair
@@ -700,7 +708,7 @@ class PatternWidget(QWidget):
             scale = 100
         else:
             scale = self.y.max() if self.y.max()>0 else 1.
-        reference_item.setData(x, I*scale)  # Initialize with test data
+        item.setData(x, I*scale)  # Update with new data
 
     def remove_reference(self, index=-1):
         """Remove a reference pattern from the plot."""

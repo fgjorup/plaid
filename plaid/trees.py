@@ -331,6 +331,7 @@ class CIFTreeWidget(QWidget):
     sigItemChecked = QtCore.pyqtSignal(int, bool)
     sigItemDoubleClicked = QtCore.pyqtSignal(int, str)
     sigItemRemoved = QtCore.pyqtSignal(int)
+    sigItemReloadRequested = QtCore.pyqtSignal(int)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.parent = parent
@@ -433,13 +434,13 @@ class CIFTreeWidget(QWidget):
         # create a context menu for the item
         menu = QMenu(self)
         # # add an action to reload the CIF file
-        # reload_action = menu.addAction("Reload CIF")
-        # reload_action.setToolTip("Reload the selected CIF file")
-        # reload_action.triggered.connect(lambda: print("reload action triggered"))  # Placeholder for reload action
+        reload_action = menu.addAction("Reload CIF")
+        reload_action.setToolTip("Reload the selected CIF file")
+        reload_action.triggered.connect(lambda: self._request_reload(item))
         # add an action to remove the item
         remove_action = menu.addAction("Remove")
         remove_action.setToolTip("Remove the selected CIF file from the tree")
-        remove_action.triggered.connect(lambda: self.remove_item(item))  # Placeholder for remove action
+        remove_action.triggered.connect(lambda: self.remove_item(item))
         menu.exec(self.file_tree.viewport().mapToGlobal(pos))
         menu.deleteLater()  # Clean up the menu after use
 
@@ -469,6 +470,12 @@ class CIFTreeWidget(QWidget):
             color = QColor(self.color_cycle[i % len(self.color_cycle)])
             item.setForeground(0, color)
         
+    def _request_reload(self, item):
+        """Request reload of the specified item. Emits the sigItemReloadRequested signal with the index of the item."""
+        index = self.file_tree.indexOfTopLevelItem(item)
+        if index == -1:
+            return
+        self.sigItemReloadRequested.emit(index)
 
 if __name__ == "__main__":
     pass

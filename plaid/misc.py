@@ -10,20 +10,42 @@ including conversions between q and 2theta.
 """
 import numpy as np
 
+HC = 12.3984193  # Planck constant times speed of light in keV·Å
 
 def q_to_tth(q, E):
     """Convert q to 2theta."""
     # Convert 2theta to radians
-    wavelength = 12.398 / E
+    wavelength = HC / E
     tth = 2 * np.degrees(np.arcsin(q * wavelength / (4 * np.pi)))
     return tth
 
 def tth_to_q(tth, E):
     """Convert 2theta to q."""
     # Convert 2theta to radians
-    wavelength = 12.398 / E
+    wavelength = HC / E
     q = (4 * np.pi / wavelength) * np.sin(np.radians(tth) / 2)
     return q
+
+def d_to_q(d):
+    """Convert d-spacing to q."""
+    return 2 * np.pi / d
+
+def q_to_d(q):
+    """Convert q to d-spacing."""
+    return 2 * np.pi / q
+
+def d_to_tth(d, E):
+    """Convert d-spacing to 2theta."""
+    wavelength = HC / E
+    tth = 2 * np.degrees(np.arcsin(wavelength / (2 * d)))
+    return tth
+
+def tth_to_d(tth, E):
+    """Convert 2theta to d-spacing."""
+    wavelength = HC / E
+    d = wavelength / (2 * np.sin(np.radians(tth) / 2))
+    return d
+
 
 def get_divisors(x):
     """Get all divisors of an integer x."""
