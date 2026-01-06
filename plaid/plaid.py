@@ -392,11 +392,11 @@ class MainWindow(QMainWindow):
     def _init_connections(self):
         """Initialize the connections between the widgets. Called by self.__init__()."""
         # Connect the file tree signals to the appropriate slots
-        self.file_tree.sigItemDoubleClicked.connect(self.load_file)
-        self.file_tree.sigGroupDoubleClicked.connect(self.load_file)
-        self.file_tree.sigItemRemoved.connect(self.remove_file)
-        self.file_tree.sigI0DataRequested.connect(self.load_I0_data)
-        self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data)
+        self.file_tree.sigItemDoubleClicked.connect(self.load_file)                # --> str, obj
+        self.file_tree.sigGroupDoubleClicked.connect(self.load_file)               # --> list, list
+        self.file_tree.sigItemRemoved.connect(self.remove_file)                    # --> str
+        self.file_tree.sigI0DataRequested.connect(self.load_I0_data)               # --> str
+        self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data) # --> str
         # Connect the CIF tree signals to the appropriate slots
         self.cif_tree.sigItemAdded.connect(self.add_reference)              # --> str
         self.cif_tree.sigItemChecked.connect(self.toggle_reference)         # --> int, bool
@@ -404,33 +404,32 @@ class MainWindow(QMainWindow):
         self.cif_tree.sigItemRemoved.connect(self.remove_reference)         # --> int
         self.cif_tree.sigItemReloadRequested.connect(self.reload_reference) # --> int
         # Connect the heatmap signals to the appropriate slots
-        self.heatmap.sigHLineMoved.connect(self.hline_moved)
-        self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange)
-        self.heatmap.sigImageDoubleClicked.connect(self.add_pattern)
-        self.heatmap.sigImageHovered.connect(self._update_status_bar)
-        self.heatmap.sigHLineRemoved.connect(self.remove_pattern)
+        self.heatmap.sigHLineMoved.connect(self.hline_moved)           # --> int, int
+        self.heatmap.sigXRangeChanged.connect(self.pattern.set_xrange) # --> object
+        self.heatmap.sigImageDoubleClicked.connect(self.add_pattern)   # --> object
+        self.heatmap.sigImageHovered.connect(self._update_status_bar)  # --> object
+        self.heatmap.sigHLineRemoved.connect(self.remove_pattern)      # --> int
         # Connect the pattern signals to the appropriate slots
-        self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)
-        self.pattern.sigPatternHovered.connect(self.update_status_bar)
-        self.pattern.sigLinearRegionChangedFinished.connect(self.set_diffraction_map)
-        self.pattern.sigRequestQToggle.connect(self.toggle_q)
-        self.pattern.sigRequestLockPattern.connect(self.handle_lock_pattern_request)
-        self.pattern.sigRequestSubtractPattern.connect(self.set_active_pattern_as_background)
-        self.pattern.sigRequestCorrelationMap.connect(self.show_correlation_map)
-        self.pattern.sigRequestDiffractionMap.connect(lambda: self.show_diffraction_map())
-        self.pattern.sigRequestExportAvg.connect(self.export_average_pattern)
-        self.pattern.sigRequestExportCurrent.connect(self.export_pattern)
-        self.pattern.sigRequestExportAll.connect(self.export_all_patterns)
-
+        self.pattern.sigXRangeChanged.connect(self.heatmap.set_xrange)                        # --> object
+        self.pattern.sigPatternHovered.connect(self.update_status_bar)                        # --> object
+        self.pattern.sigLinearRegionChangedFinished.connect(self.set_diffraction_map)         # --> object
+        self.pattern.sigRequestQToggle.connect(self.toggle_q)                                 # --> ()
+        self.pattern.sigRequestLockPattern.connect(self.handle_lock_pattern_request)          # --> object
+        self.pattern.sigRequestSubtractPattern.connect(self.set_active_pattern_as_background) # --> ()
+        self.pattern.sigRequestCorrelationMap.connect(self.show_correlation_map)              # --> ()
+        self.pattern.sigRequestDiffractionMap.connect(lambda: self.show_diffraction_map())    # --> ()
+        self.pattern.sigRequestExportAvg.connect(self.export_average_pattern)                 # --> ()
+        self.pattern.sigRequestExportCurrent.connect(self.export_pattern)                     # --> ()
+        self.pattern.sigRequestExportAll.connect(self.export_all_patterns)                    # --> ()
         # Connect the auxiliary plot signals to the appropriate slots
-        self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)
-        self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux)
+        self.auxiliary_plot.sigVLineMoved.connect(self.vline_moved)           # --> int, int
+        self.auxiliary_plot.sigAuxHovered.connect(self.update_status_bar_aux) # --> object
 
-        self.correlation_map_dock.visibilityChanged.connect(self.update_correlation_map)
-        self.correlation_map.sigImageDoubleClicked.connect(self.correlation_map_double_clicked)
+        self.correlation_map_dock.visibilityChanged.connect(self.update_correlation_map)        # --> bool
+        self.correlation_map.sigImageDoubleClicked.connect(self.correlation_map_double_clicked) # --> object
 
-        self.diffraction_map_dock.visibilityChanged.connect(self.update_diffraction_map)
-        self.diffraction_map.sigImageDoubleClicked.connect(self.diffraction_map_double_clicked)
+        self.diffraction_map_dock.visibilityChanged.connect(self.update_diffraction_map)        # --> bool
+        self.diffraction_map.sigImageDoubleClicked.connect(self.diffraction_map_double_clicked) # --> object
 
     def _init_menu_bar(self):
         """Initialize the menu bar with the necessary menus and actions. Called by self.__init__()."""
