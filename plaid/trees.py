@@ -51,6 +51,7 @@ class FileTreeWidget(QWidget):
     sigItemRemoved = QtCore.pyqtSignal(str)
     sigI0DataRequested = QtCore.pyqtSignal(str)
     sigAuxiliaryDataRequested = QtCore.pyqtSignal(str)
+    sigReductionRequested = QtCore.pyqtSignal(list)
     def __init__(self, parent=None):
         super().__init__(parent)
         self.files = []  # List to store file paths
@@ -83,7 +84,7 @@ class FileTreeWidget(QWidget):
             item = self.file_tree.topLevelItem(index)
             if item is not None:
                 item.setText(1, shape.__str__())
-            return
+            return item
         # add the file to the list
         self.files.append(file_path)
         # get the file name
@@ -114,7 +115,8 @@ class FileTreeWidget(QWidget):
         # enable root decoration if a auxiliary item is added
         self.file_tree.setRootIsDecorated(True)
         # create a new item for the auxiliary data
-        aux_item = pg.TreeWidgetItem([alias, shape.__str__()])
+        aux_item = QTreeWidgetItem([alias, shape.__str__()])
+        # aux_item = pg.TreeWidgetItem([alias, shape.__str__()])
         item.addChild(aux_item)
 
     def get_aux_target_name(self):
@@ -231,6 +233,19 @@ class FileTreeWidget(QWidget):
         # Emit a signal to request auxiliary data for item
         self.sigAuxiliaryDataRequested.emit(self.files[index])
 
+    def request_reduction(self, item):
+        """Request data reduction for the selected item."""
+        index = self.file_tree.indexOfTopLevelItem(item)
+        if index == -1:
+            return
+        if item in self.item_group:
+            indices = [self.file_tree.indexOfTopLevelItem(i) for i in self.item_group]
+            files = [self.files[i] for i in indices]
+        else:
+            files = [self.files[index]]
+        # Emit a signal to request data reduction for item
+        self.sigReductionRequested.emit(files)
+
     def group_selected_items(self):
         """Group the selected items together."""
         self.item_group = self.file_tree.selectedItems()
@@ -285,6 +300,10 @@ class FileTreeWidget(QWidget):
             add_aux_action = menu.addAction("Add Auxiliary Data")
             add_aux_action.setToolTip("Add auxiliary 1D data from an h5 file")
             add_aux_action.triggered.connect(lambda: self.request_auxiliary_data(item))
+            # add an action to reduce data
+            reduce_action = menu.addAction("Reduce Data")
+            reduce_action.setToolTip("Reduce the data by averaging along the first axis")
+            reduce_action.triggered.connect(lambda: self.request_reduction(item))
             # add an action to remove the item
             remove_action = menu.addAction("Remove")
             remove_action.setToolTip("Remove the selected item from the tree")

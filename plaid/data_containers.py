@@ -15,7 +15,7 @@ import h5py as h5
 from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_signal_errors, get_nx_axes,
                          get_nx_energy, get_nx_monitor, get_instrument_name, get_source_name,
                          get_nx_sample, get_nx_transformations, get_translations_from_nx_transformations)
-from plaid.misc import q_to_tth, tth_to_q, get_map_shape_and_indices
+from plaid.misc import q_to_tth, tth_to_q, get_map_shape_and_indices, average_blocks
 from plaid.dialogs import H5Dialog
 
 
@@ -52,6 +52,8 @@ class AzintData():
         self.E = None
         self.I0 = None
         self.shape = None  # Shape of the intensity data
+        self._shapes = []  # Shapes of individual files loaded
+        self.reduction_factor = 1 # Reduction factor applied to the data (compounded if multiple reductions are applied)
         self.instrument_name = None  # Name of the instrument, if available
         self.source_name = None  # Name of the source, if available
         self._load_func = None
@@ -88,6 +90,7 @@ class AzintData():
         x = None
         I = np.array([[],[]])
         I_error = np.array([[],[]])
+        _shapes = []
         for fname in self.fnames:
             x_, I_, I_error_, is_q, E = self._load_func(fname)
             if x_ is None or I_ is None:
@@ -100,6 +103,7 @@ class AzintData():
                 return False
             x = x_
             I = np.append(I, I_, axis=0) if I.size else I_
+            _shapes.append(I_.shape)
             if I_error_ is not None:
                 I_error = np.append(I_error, I_error_, axis=0) if I_error.size else I_error_
         if I_error.size == 0:
@@ -112,6 +116,7 @@ class AzintData():
         self.E = E
         self.y_avg = I.mean(axis=0)
         self.shape = I.shape
+        self._shapes = _shapes
  
         if look_for_I0 and self._load_func == self._load_azint:
             # If the data is loaded from a nxazint file, attempts to load
@@ -132,7 +137,6 @@ class AzintData():
             # If the data is loaded from a nxazint file, attempts to load
             # the map shape and pixel indices from a nxtransformations group in the file.
             self.load_map_shape_and_indices()
-
 
         return True, messages
     
@@ -185,6 +189,21 @@ class AzintData():
                 y = np.append(y, translations["y"]) if y.size else translations["y"]
         self.map_shape, self.map_indices = get_map_shape_and_indices(y, x)
         return True
+
+    def reduce_data(self, reduction_factor=2, axes=(0,)):
+        """Reduce the azimuthal integration data by averaging non-overlapping blocks."""
+        
+        if self.I is None:
+            return
+        self.I = average_blocks(self.I, reduction_factor=reduction_factor, axes=axes)
+        if self.I_error is not None:
+            self.I_error = average_blocks(self.I_error, reduction_factor=reduction_factor, axes=axes)
+        if self.I0 is not None:
+            self.I0 = average_blocks(self.I0, reduction_factor=reduction_factor, axes=axes)
+        self.y_avg = self.I.mean(axis=0) if self.I is not None else None
+        self.shape = self.I.shape if self.I is not None else None
+        self.map_shape, self.map_indices = None, None  # Invalidate map shape and indices after reduction
+        self.reduction_factor *= reduction_factor
 
     def user_E_dialog(self):
         """Prompt the user for the energy value if not available in the file."""
@@ -387,6 +406,10 @@ class AzintData():
             if name:
                 name += " - "
             name += f"I0 corrected"
+        if self.reduction_factor != 1:
+            if name:
+                name += " - "
+            name += f"reduced x{self.reduction_factor}"
         return name
 
     def _determine_load_func(self, fname):
@@ -572,7 +595,7 @@ class AuxData:
     def keys(self):
         """Get the keys of the AuxData instance."""
         return [key for key in self.__dict__.keys() if not key.startswith('_')]
-    
+        
     def clear(self):
         """Clear all data in the AuxData instance."""
         self.__dict__.clear()

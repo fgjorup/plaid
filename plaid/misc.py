@@ -75,5 +75,46 @@ def get_map_shape_and_indices(y,x):
 
     return map_shape, pixel_indices
 
-if __name__ == "__main__":
+def average_blocks(arr, reduction_factor=2, axes=(0,)):
+    """
+    Reduce a numpy array along multiple axes by averaging non-overlapping blocks of the same size.
+    If the size along any axis is not divisible by reduction_factor, the last entries are dropped.
+
+    Parameters
+    ----------
+    arr : np.ndarray
+        Input array.
+    reduction_factor : int
+        Number of adjacent entries to average along each axis.
+    axes : int or tuple of int
+        Axes along which to average.
+
+    Returns
+    -------
+    np.ndarray
+        Reduced array.
+    """
+    if reduction_factor is None or reduction_factor <= 1:
+        return arr
+    arr = np.asarray(arr)
+    if not hasattr(axes, '__iter__'):
+        axes = (axes,)
+    for axis in axes:
+        if axis < 0 or axis >= arr.ndim:
+            raise ValueError(f"Axis {axis} out of bounds for array of dimension {arr.ndim}")
+    for axis in sorted(axes):
+        n = arr.shape[axis]
+        rf = min(reduction_factor, n)
+        trimmed = n - (n % rf)
+        if trimmed != n:
+            slc = [slice(None)] * arr.ndim
+            slc[axis] = slice(0, trimmed)
+            arr = arr[tuple(slc)]
+        shape = list(arr.shape)
+        new_shape = shape[:axis] + [shape[axis] // rf, rf] + shape[axis+1:]
+        arr = arr.reshape(new_shape)
+        arr = arr.mean(axis=axis+1)
+    return arr
+
+if __name__ == "__main__":  
     pass

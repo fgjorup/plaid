@@ -12,8 +12,9 @@ including loading files, displaying heatmaps and patterns, and managing auxiliar
 import sys
 import os
 import numpy as np
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget, QDockWidget,
-                             QSizePolicy, QFileDialog, QMessageBox, QProgressDialog, QCheckBox, QSplashScreen)
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QHBoxLayout, QWidget,
+                             QDockWidget, QSizePolicy, QFileDialog, QMessageBox, 
+                             QProgressDialog, QCheckBox, QSplashScreen,QInputDialog)
 from PyQt6.QtGui import QAction, QIcon, QPixmap
 from PyQt6 import QtCore
 import pyqtgraph as pg
@@ -37,7 +38,7 @@ from plaid.trees import FileTreeWidget, CIFTreeWidget
 from plaid.dialogs import H5Dialog, ExportSettingsDialog, ColorCycleDialog
 from plaid.reference import Reference
 from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget, DiffractionMapWidget
-from plaid.misc import q_to_tth, tth_to_q, d_to_q, d_to_tth, get_divisors
+from plaid.misc import q_to_tth, tth_to_q, d_to_q, d_to_tth, get_divisors, average_blocks
 from plaid.data_containers import AzintData, AuxData
 from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
@@ -392,11 +393,13 @@ class MainWindow(QMainWindow):
     def _init_connections(self):
         """Initialize the connections between the widgets. Called by self.__init__()."""
         # Connect the file tree signals to the appropriate slots
-        self.file_tree.sigItemDoubleClicked.connect(self.load_file)                # --> str, obj
-        self.file_tree.sigGroupDoubleClicked.connect(self.load_file)               # --> list, list
+        self.file_tree.sigItemDoubleClicked.connect(self.open_file)                # --> str, obj
+        # self.file_tree.sigItemDoubleClicked.connect(self.load_file)                # --> str, obj
+        self.file_tree.sigGroupDoubleClicked.connect(self.open_file)               # --> list, list
         self.file_tree.sigItemRemoved.connect(self.remove_file)                    # --> str
         self.file_tree.sigI0DataRequested.connect(self.load_I0_data)               # --> str
         self.file_tree.sigAuxiliaryDataRequested.connect(self.load_auxiliary_data) # --> str
+        self.file_tree.sigReductionRequested.connect(self.apply_reduction_factor)  # --> str
         # Connect the CIF tree signals to the appropriate slots
         self.cif_tree.sigItemAdded.connect(self.add_reference)              # --> str
         self.cif_tree.sigItemChecked.connect(self.toggle_reference)         # --> int, bool
@@ -744,7 +747,7 @@ class MainWindow(QMainWindow):
             status_text += f"Y: {y_value:7.3f}"
         self.statusBar().showMessage(status_text)
         
-    def open_file(self,file_path=None):
+    def open_file(self,file_path=None,item=None):
         """
         Open the optional provided file path or a file dialog to select an azimuthal 
         integration file and add it to the file tree.
@@ -759,20 +762,23 @@ class MainWindow(QMainWindow):
             file_path, ok = QFileDialog.getOpenFileName(self, "Select Azimuthal Integration File", default_dir, "HDF5 Files (*.h5);;All Files (*)")
             if not ok or not file_path:
                 return
-        self.load_file(file_path)
-        shape  = self.azint_data.shape
-        if shape is not None:
-            # add the file to the file tree
-            item = self.file_tree.add_file(file_path,shape)
-
-            self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
-
-            # # if the file was loaded with I0 data (nxmonitor), set the status tip
-            # # of the file tree item to indicate that it has I0 data
-            # if self.azint_data.I0 is not None:
-            #     # if the azint_data has I0 data, add it to the file tree item
-            #     self.file_tree.set_target_item_status_tip("I0 corrected", item)
+        self.load_file(file_path, item=item)
         
+        if isinstance(file_path, str):
+            file_path = [file_path]  # Ensure file_path is a list
+        
+        for i,f in enumerate(file_path):
+            shape  = self.azint_data._shapes[i]
+            if shape is not None:
+                # add the file to the file tree
+                item = self.file_tree.add_file(f,shape)
+                self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
+       
+        # flag the correlation and diffraction maps for update
+        self.correlation_map.fnames = None  
+        self.diffraction_map.fnames = None
+
+
     def load_file(self, file_path, item=None):
         """
         Load the selected file and update the heatmap and pattern.
@@ -786,7 +792,7 @@ class MainWindow(QMainWindow):
         file_path = [os.path.abspath(f) for f in file_path]  # Convert to absolute paths
         # Check if this is the initial load or a reload, i.e. is the method called
         # with an item from the file tree
-        is_initial_load = item is None  
+        is_initial_load = item is None
         self.azint_data = AzintData(self,file_path)
 
         self._success = False # flag to indicate if the load was successful
@@ -861,15 +867,18 @@ class MainWindow(QMainWindow):
                 self.aux_data[file_path[0]] = AuxData(self)
             self.aux_data[file_path[0]].set_I0(self.azint_data.I0)
             I0 = self.aux_data[file_path[0]].get_data('I0')
-            if I0 is not None:
+            if I0 is not None and I0.shape == self.azint_data.shape[0]:
                 self.azint_data.set_I0(I0)
                 aux_plot_key = file_path[0]
-            
+        
+        # if a file tree item is provided, i.e. the file already existed in the file tree,
+        # check for I0 and auxiliary data. While the integrated data is reloaded from the 
+        # file, the (much smaller) auxiliary data is stored in memory.
         if item is not None and not isinstance(item, list): # for now, only handle a single item
             # check if the item has I0 data
             if item.toolTip(0) in self.aux_data:
                 I0 = self.aux_data[item.toolTip(0)].get_data('I0')
-                if I0 is not None:
+                if I0 is not None and I0.shape == self.azint_data.shape[0]:
                     self.azint_data.set_I0(I0)
                 if len(self.aux_data[item.toolTip(0)].keys()) > 0:
                     # if there are more keys, plot the auxiliary data
@@ -916,6 +925,7 @@ class MainWindow(QMainWindow):
                     # if there are more keys, plot the auxiliary data
                     aux_plot_key = group_path
         
+
         x = self.azint_data.get_tth() if not self.azint_data.is_q else self.azint_data.get_q()
         I = self.azint_data.get_I()
         y_avg = self.azint_data.get_average_I()
@@ -1163,17 +1173,18 @@ class MainWindow(QMainWindow):
         """Add auxiliary data from the h5dialog to the azint data instance."""
         if not is_ok:
             return
-        aux_data = {}
         target_name, target_shape = self.file_tree.get_aux_target_name()
         if not target_name in self.aux_data.keys():
             self.aux_data[target_name] = AuxData(self)
         with h5.File(self.h5dialog.get_file_path(), 'r') as f:
             for [alias,file_path,shape] in self.h5dialog.get_selected_items():
-                aux_data[alias] =  f[file_path][:]
+                data = f[file_path][:]
+                if self.azint_data.reduction_factor > 1:
+                    data = average_blocks(data, self.azint_data.reduction_factor)
+                    shape = f"{data.shape[0]}*"
                 self.file_tree.add_auxiliary_item(alias,shape)
-                self.aux_data[target_name].add_data(alias, f[file_path][:])
+                self.aux_data[target_name].add_data(alias, data)
         
-        #self.azint_data.set_auxiliary_data(aux_data)
         # Update the auxiliary plot with the new data
         self.add_auxiliary_plot(target_name)
 
@@ -1188,6 +1199,7 @@ class MainWindow(QMainWindow):
                 # Skip I0 data for the auxiliary plot
                 continue
             if data is not None and data.ndim == 1:
+                data = average_blocks(data, self.azint_data.reduction_factor)
                 # If the data is 1D, plot it directly
                 self.auxiliary_plot.set_data(data, label=alias)
         # ensure that a v line exists for each h line in the heatmap
@@ -1548,8 +1560,6 @@ class MainWindow(QMainWindow):
         roi = self.pattern.get_linear_region_roi()
         self.set_diffraction_map(roi)
   
-
-
     def set_diffraction_map(self,roi):
         """
         Set the diffraction map data according to the provided roi.
@@ -1577,7 +1587,64 @@ class MainWindow(QMainWindow):
                     z[self.azint_data.map_indices] = np.mean(I,axis=1)
                     # z[self.azint_data.map_indices] = np.mean(self.azint_data.get_I()[:, roi],axis=1)
             self.diffraction_map.set_diffraction_data(z)
+
+    def apply_reduction_factor(self,files):
+        """
+        Apply a data reduction factor to the azimuthal integration data.
+        Request a reduction factor from the user and apply it to the data.
+        Update relevant plots and file tree items.
+        Called when the user requests data reduction from the file tree.
+        """
         
+        # request a reduction factor from the user
+        reduction_factor, ok = QInputDialog.getInt(self, 
+                                                   "Data Reduction", 
+                                                   "Enter reduction factor:\n(Reload to revert)",
+                                                    value=2,
+                                                    min=1,
+                                                    max=self.azint_data.shape[0],
+                                                    )
+        if not ok:
+            return
+        
+        if self.azint_data.fnames is None or not all(file in self.azint_data.fnames for file in files):
+            self.open_file(files)
+            if self.azint_data.fnames is None or not all(file in self.azint_data.fnames for file in files):
+                QMessageBox.critical(self, "Error", f"Failed to load azimuthal integration data from {files}.")
+                return
+        
+        # apply the reduction factor to the azint data
+        self.azint_data.reduce_data(reduction_factor=reduction_factor)
+        # update the file tree item shape
+        for file in (files):
+            shape = self.azint_data.shape
+            self.file_tree.add_file(file,shape=shape.__str__().replace(',','*,'))
+  
+        # update heatmap
+        I = self.azint_data.get_I()
+        x = self.heatmap.x
+        self.heatmap.set_data(x, I.T)
+        # update patterns and average pattern
+        self.update_all_patterns()
+        y_avg = self.azint_data.get_average_I()
+        self.pattern.set_avg_data(y_avg)
+        # flag the correlation and diffraction maps for update
+        self.correlation_map.fnames = None  # force update
+        self.diffraction_map.fnames = None  # force update
+        # update diffraction map if visible
+        if self.diffraction_map_dock.isVisible():
+            self.update_diffraction_map(True)
+        if self.correlation_map_dock.isVisible():
+            self.update_correlation_map(True)
+        # update the file tree item status tip to indicate the new reduction factor
+        for file in files:
+            item = self.file_tree.file_tree.topLevelItem(self.file_tree.files.index(file))
+            self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
+        
+        group_path = ";".join([file for file in files])
+        # update auxiliary data plot
+        if group_path in self.aux_data:
+            self.add_auxiliary_plot(group_path)
 
     def dragEnterEvent(self, event):
         """Handle drag and drop events for the main window."""
@@ -1637,8 +1704,7 @@ class MainWindow(QMainWindow):
             self.heatmap.move_active_h_line(-delta)
 
         # # DEBUG
-        elif event.key() == QtCore.Qt.Key.Key_Space:
-
+        elif event.key() == QtCore.Qt.Key.Key_Space:           
             pass
     
     def show_correlation_map(self):
