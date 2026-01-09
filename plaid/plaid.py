@@ -766,14 +766,14 @@ class MainWindow(QMainWindow):
         
         if isinstance(file_path, str):
             file_path = [file_path]  # Ensure file_path is a list
+        if self.azint_data._shapes:
+            for i,f in enumerate(file_path):
+                shape  = self.azint_data._shapes[i]
+                if shape is not None:
+                    # add the file to the file tree
+                    item = self.file_tree.add_file(f,shape)
+                    self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
         
-        for i,f in enumerate(file_path):
-            shape  = self.azint_data._shapes[i]
-            if shape is not None:
-                # add the file to the file tree
-                item = self.file_tree.add_file(f,shape)
-                self.file_tree.set_target_item_status_tip(self.azint_data.get_info_string(), item)
-       
         # flag the correlation and diffraction maps for update
         self.correlation_map.fnames = None  
         self.diffraction_map.fnames = None

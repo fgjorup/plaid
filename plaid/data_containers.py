@@ -75,18 +75,20 @@ class AzintData():
         Returns:
         - True if the data was loaded successfully, False otherwise.
         """
+        messages = [] # messages to return to caller. A workaround for threading issues with QMessageBox
         if not all(fname.endswith('.h5') for fname in self.fnames):
+            messages.append((QMessageBox.critical,"Error", "File(s) are not HDF5 files."))
             print("File(s) are not HDF5 files.")
-            return False
+            return False, messages
         
         if self._load_func is None:
             # Determine the load function based on the first file
             self._determine_load_func(self.fnames[0])
             if self._load_func is None:
+                messages.append((QMessageBox.critical,"Error", "No valid load function found. Please provide a valid azimuthal integration file."))
                 print("No valid load function found. Please provide a valid azimuthal integration file.")
-                return False
+                return False, messages
 
-        messages = [] # messages to return to caller. A workaround for threading issues with QMessageBox
         x = None
         I = np.array([[],[]])
         I_error = np.array([[],[]])
@@ -94,13 +96,14 @@ class AzintData():
         for fname in self.fnames:
             x_, I_, I_error_, is_q, E = self._load_func(fname)
             if x_ is None or I_ is None:
+                messages.append((QMessageBox.critical,"Error", f"Error loading data from {fname}."))    
                 print(f"Error loading data from {fname}.")
-                return False
+                return False, messages
             if x is not None and x_.shape != x.shape:
                 print(f"Error: Inconsistent x shapes in {fname}.")
                 messages.append((QMessageBox.critical,"Error", f"Inconsistent x shapes in {fname}."))
                 #QMessageBox.critical(self.parent, "Error", f"Inconsistent x shapes in {fname}.")
-                return False
+                return False, messages
             x = x_
             I = np.append(I, I_, axis=0) if I.size else I_
             _shapes.append(I_.shape)
