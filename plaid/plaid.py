@@ -40,9 +40,10 @@ from plaid.reference import Reference
 from plaid.plot_widgets import HeatmapWidget, PatternWidget, AuxiliaryPlotWidget, CorrelationMapWidget, DiffractionMapWidget
 from plaid.misc import q_to_tth, tth_to_q, d_to_q, d_to_tth, get_divisors, average_blocks
 from plaid.data_containers import AzintData, AuxData
+from plaid.io import load_file, ReadWorker
 from plaid import __version__ as CURRENT_VERSION
 import plaid.resources
-from plaid.qt_worker import run_in_thread
+#from plaid.qt_worker import run_in_thread
 
 
 # # debug fn to show who is calling what and when to find out why.
@@ -62,8 +63,6 @@ from plaid.qt_worker import run_in_thread
 # - add a "reduction factor" option to reduce the effective time resolution of the data (I, I0, and aux data)
 # - Crop data option? Perhaps save cropped .h5 copy?
 # - Restructure data loading
-#    > make it easier to specify custom loading functions for different file types
-#    > Read files in chunks to allow cancelling loading of large files
 #    > Update plots on the fly during reading?
 
 
@@ -77,14 +76,6 @@ colors = ["#C41E3A", # Crimson Red
           "#8B008B", # Dark Magenta
           "#2F4F4F", # Dark Slate Gray
          ]
-        # '#AAAA00',  # Yellow
-        # '#AA00AA',  # Magenta
-        # '#00AAAA',  # Cyan
-        # '#AA0000',  # Red
-        # '#00AA00',  # Green
-        # "#0066FF",  # Blue
-        # '#AAAAAA',  # Light Gray
-        # ]
 
 # Update checking
 def check_for_updates():
@@ -236,6 +227,13 @@ class MainWindow(QMainWindow):
         self.aux_data = {}
 
         self.locked_patterns = []  # list of (is_Q, E) tuples for locked patterns
+        
+        # initialize the data read worker
+        self.read_worker = ReadWorker()
+        self.read_worker.sigFinished.connect(self._load_intensity_data_done)
+        # self.read_worker.sigFinished.connect(lambda *_: _loop.quit())
+        # self.read_worker.sigError.connect(lambda e: print(f"Error: {e}"))
+        self.read_worker.sigProgress.connect(self._load_intensity_data_progress)
         
         self._load_color_cycle()
         if not self.color_cycle:
@@ -461,12 +459,6 @@ class MainWindow(QMainWindow):
             self.recent_menu.setEnabled(True)
             self.recent_menu.setToolTip("Open a recent file")
             for file in recent_files:
-                # action = QAction(file, self)
-                # action.setToolTip(f"Open {file}")
-                # # action.triggered.connect(lambda checked, f=file: self.file_tree.add_file(f))
-                # action.triggered.connect(lambda checked, f=file: self.open_file(f))
-                # action.setDisabled(not os.path.exists(file))  # Disable if file does not exist
-                # self.recent_menu.addAction(action)
                 self._add_recent_file_action(file)
         else:
             self.recent_menu.setEnabled(False)
@@ -778,7 +770,6 @@ class MainWindow(QMainWindow):
         self.correlation_map.fnames = None  
         self.diffraction_map.fnames = None
 
-
     def load_file(self, file_path, item=None):
         """
         Load the selected file and update the heatmap and pattern.
@@ -795,64 +786,56 @@ class MainWindow(QMainWindow):
         is_initial_load = item is None
         self.azint_data = AzintData(self,file_path)
 
-        self._success = False # flag to indicate if the load was successful
-        # show a progress dialog while loading the file
-        progress = QProgressDialog("Loading data...", None, 0, 0, self)
-        progress.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
-        # disable the close button
-        #progress.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, False)
-        progress.setWindowTitle("Please wait")
-        progress.show()
-
-        # create an event loop to wait for the loading to finish
-        _loop = QtCore.QEventLoop()
-
-        # define the on_done callback function
-        def on_done(success, result):
-            """
-            process any messages returned by the load function
-            This is a workaround to show message boxes from the worker thread
-
-            success: bool - whether the load was successful (from the worker thread)
-            result: tuple - (bool, list) - the first element is whether the load was
-                            successful (from the load function), the second element 
-                            is a list of messages to process [func, arg1, arg2, ...]
-            """
-            #
-            if isinstance(result, Exception):
-                QMessageBox.critical(self, "Error", f"An error occurred while loading the file: {str(result)}")
-                self._success = False
-                progress.reset()
-                _loop.quit()
-                return
-            messages = result[1]
-            for msg in messages:
-                func = msg[0]
-                args = msg[1:]
-                reply = func(self, *args)
-                # if the user chose to not use the I0 data, set it to None
-                if reply == QMessageBox.StandardButton.No:
-                    self.azint_data.I0 = None
-            self._success = success and result[0]
-            progress.reset()
-            _loop.quit()
-
-            
-
-        # run the load function in a separate thread
-        worker = run_in_thread(self.azint_data.load, args=None, kwargs={"look_for_I0": is_initial_load}, on_done=on_done)
-  
-        # start the event loop to wait for the loading to finish
-        _loop.exec()
-
-        if not self._success:
-            QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
-            return
-
-        #if not self.azint_data.load(look_for_I0=is_initial_load):
-        #    QMessageBox.critical(self, "Error", f"Failed to load file: {file_path[0]}")
-        #    return
+        # ensure all files are HDF5 files
+        if not all(fname.endswith('.h5') for fname in self.azint_data.fnames):
+            QMessageBox.critical(self, "Error", "File(s) are not HDF5 files.")
+            return False
         
+        # read "secondary" data and I, I_error paths and ensure consistent x shapes
+        x = None
+        I_paths, I_error_paths = [], []
+        I0 = np.array([])
+        for fname in self.azint_data.fnames:
+            data_dict = load_file(fname,parent=self)
+            if data_dict is None:
+                QMessageBox.critical(self, "Error", "No valid load function found. Please provide a valid azimuthal integration file.")
+                return False
+            I_paths.append(data_dict["I"])
+            I_error_paths.append(data_dict["I_error"])
+            is_q = data_dict["q"] is not None
+            _x = data_dict["q"] if is_q else data_dict["tth"]
+            if x is not None and _x.shape != x.shape:
+                QMessageBox.critical(self, "Error", f"Inconsistent x shapes in {fname}.")
+                return False
+            x = _x
+            if data_dict["I0"] is not None:
+                I0 = np.append(I0, data_dict["I0"]) if I0.size else data_dict["I0"]
+
+        self.azint_data.set_secondary_data(data_dict)
+
+        # read intensity data in a separate thread
+        for i,fname in enumerate(self.azint_data.fnames):
+            if not self._load_intensity_data(fname, I_paths[i]):
+                # if the intensity data could not be loaded, clear the azint_data and return
+                self.azint_data = AzintData(self,file_path)
+                return
+            
+        # read intensity error data in a separate thread
+        for i,fname in enumerate(self.azint_data.fnames):
+            self._load_intensity_data(fname, I_error_paths[i])
+
+        self.azint_data.shape = self.azint_data.I.shape if self.azint_data.I is not None else None
+        # self.azint_data.y_avg = self.azint_data.I.mean(axis=0) if self.azint_data.I is not None else None
+
+        if is_initial_load and I0.size == self.azint_data.shape[0]:
+            reply = QMessageBox.question(self,"NXmonitor data found",
+                                        "I0 data loaded from nxmonitor dataset. Do you want to use it?",
+                                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                                        QMessageBox.StandardButton.Yes)
+            if reply == QMessageBox.StandardButton.Yes:
+                self.azint_data.set_I0(I0)
+
+
         # clear the auxiliary plot and check for I0 and auxiliary data
         self.auxiliary_plot.clear()  # Clear the previous plot
         aux_plot_key = None
@@ -861,15 +844,18 @@ class MainWindow(QMainWindow):
         # and if so, set the I0 data of the corresponding aux_data. The I0 data
         # of the azint_data is overwritten in the next step, but this ensures that
         # the I0 data conforms to the aux_data I0 format.
-        if is_initial_load and isinstance(self.azint_data.I0, np.ndarray):
+        if is_initial_load:
             if not file_path[0] in self.aux_data:
                 # if the file is not already in the aux_data, add it
                 self.aux_data[file_path[0]] = AuxData(self)
-            self.aux_data[file_path[0]].set_I0(self.azint_data.I0)
-            I0 = self.aux_data[file_path[0]].get_data('I0')
-            if I0 is not None and I0.shape == self.azint_data.shape[0]:
-                self.azint_data.set_I0(I0)
-                aux_plot_key = file_path[0]
+            if isinstance(self.azint_data.I0, np.ndarray):
+                self.aux_data[file_path[0]].set_I0(self.azint_data.I0)
+                I0 = self.aux_data[file_path[0]].get_data('I0')
+                if I0 is not None and I0.shape[0] == self.azint_data.shape[0]:
+                    self.azint_data.set_I0(I0)
+                    aux_plot_key = file_path[0]
+            if self.azint_data.E is not None:
+                self.aux_data[file_path[0]]._E = self.azint_data.E
         
         # if a file tree item is provided, i.e. the file already existed in the file tree,
         # check for I0 and auxiliary data. While the integrated data is reloaded from the 
@@ -883,6 +869,8 @@ class MainWindow(QMainWindow):
                 if len(self.aux_data[item.toolTip(0)].keys()) > 0:
                     # if there are more keys, plot the auxiliary data
                     aux_plot_key = item.toolTip(0)
+                if self.aux_data[item.toolTip(0)]._E is not None and self.azint_data.E is None:
+                    self.azint_data.E = self.aux_data[item.toolTip(0)]._E                    
 
         elif isinstance(item, list):
             # check if grouped auxiliary data already exists
@@ -932,14 +920,13 @@ class MainWindow(QMainWindow):
         is_q = self.azint_data.is_q
         self.is_Q = is_q
         self.toggle_q_action.setChecked(is_q)
-        if self.azint_data.E is not None:
-            self.E = self.azint_data.E
-        
+        #if self.azint_data.E is not None:
+        self.E = self.azint_data.E
+
         # Update the heatmap with the new data
         self.heatmap.set_data(x, I.T)
         # self.heatmap.set_data(x_edge, y_edge, I)
         self.heatmap.set_xlabel("2theta (deg)" if not is_q else "Q (1/A)")
-
 
         # Update the pattern with the first frame
         self.pattern.set_data(x, I[0])
@@ -947,12 +934,69 @@ class MainWindow(QMainWindow):
         self.update_all_patterns()
         self.pattern.set_xlabel("2theta (deg)" if not is_q else "Q (1/A)")
         self.pattern.set_xrange((x[0], x[-1]))
+
         if not aux_plot_key is None:
             # if a selected item is provided, add the auxiliary plot for that item
             self.add_auxiliary_plot(aux_plot_key)
         
         self.update_correlation_map(self.correlation_map_dock.isVisible())
         #self.update_diffraction_map(self.diffraction_map_dock.isVisible())
+            
+    def _load_intensity_data(self, file_path, dset_path):
+        """Load intensity data from a file in a separate thread."""
+        if file_path is None or dset_path is None:
+            return
+        # show a progress dialog while loading the file
+        self.progress = QProgressDialog("Loading data...", "Interrupt", 0, 10000, self)
+        self.progress.setWindowModality(QtCore.Qt.WindowModality.ApplicationModal)
+        self.progress.canceled.connect(lambda: setattr(self.read_worker, 'cancelled', True))
+        # disable the close button
+        #self.progress.setWindowFlag(QtCore.Qt.WindowType.WindowCloseButtonHint, False)
+        self.progress.setWindowTitle("Please wait")
+        self.progress.show()
+
+        self._loop = QtCore.QEventLoop()
+        self.read_worker.start(fname=file_path, dataset_path=dset_path)
+        self._loop.exec()
+        return self.read_worker.success
+
+    def _load_intensity_data_done(self, success, result):
+        """Handle the completion of intensity data loading."""
+        if success:
+            # append the result to the azint_data.I array
+            if len(self.azint_data._shapes) < len(self.azint_data.fnames):
+                # account for the DanMAX map case
+                if result.ndim == 3 and result.shape[0] - self.azint_data.x.shape[0] in (0,1):
+                    result = self._reshape_danmax_map_data(result, self.azint_data.x.shape[0])
+                if self.azint_data.I is None:
+                    self.azint_data.I = result
+                else:
+                    self.azint_data.I = np.vstack((self.azint_data.I, result))
+                self.azint_data._shapes.append(result.shape)
+            # if the number of shapes matches the number of files, assume
+            # the loaded data is I_error
+            else:
+                if self.azint_data.I_error is None:
+                    self.azint_data.I_error = result
+                else:
+                    self.azint_data.I_error = np.vstack((self.azint_data.I_error, result))
+        else:
+            QMessageBox.critical(self, "Error", f"Failed to load intensity data from {self.read_worker.fname}.")
+            print(result)
+        self._loop.quit()
+        self.progress.setValue(10000)
+
+    def _load_intensity_data_progress(self, progress):
+        self.progress.setValue(progress)
+
+    def _reshape_danmax_map_data(self, I, n_rad_bins):
+        # transpose and reshape I
+        I = np.transpose(I, (1,2,0)).reshape(-1, I.shape[0])  # [num_patterns, radial bins]
+        # in the case of xrd-ct data, an extra first column might be present as absorption data
+        # in that case, remove it 
+        if I.shape[1] - n_rad_bins == 1:
+            I = I[:, 1:]  # Remove first column if x has one less element than I
+        return I
 
     def hline_moved(self, index, pos):
         """Handle the horizontal line movement in the heatmap."""
@@ -1007,7 +1051,7 @@ class MainWindow(QMainWindow):
     def add_reference(self, cif_file, Qmax=None):
         """Add a reference pattern from a CIF file to the pattern plot."""
         if self.E is None:
-            self.E = self.azint_data.user_E_dialog()
+            self.E = self.get_user_input_energy()
             if self.E is None:
                 QMessageBox.critical(self, "Error", "Energy not set. Cannot add reference pattern.")
                 return
@@ -1075,6 +1119,13 @@ class MainWindow(QMainWindow):
         """
         self.pattern.rescale_reference(index)
         self.statusBar().showMessage(f"Rescaled {name}")
+
+    def get_user_input_energy(self):
+        """Prompt the user to input the energy if not already set."""
+        E = self.azint_data.user_E_dialog()
+        if E is not None and self.azint_data.fnames[0] in self.aux_data:
+            self.aux_data[self.azint_data.fnames[0]].set_energy(E)
+        return E
 
     def load_I0_data(self, aname=None, fname=None):
         """Load auxillary data as I0. Called when the user requests I0 data from the file tree."""
@@ -1223,7 +1274,7 @@ class MainWindow(QMainWindow):
         if self.azint_data.I is None:
             return
         if self.E is None:
-            self.E = self.azint_data.user_E_dialog()
+            self.E = self.get_user_input_energy()
             if self.E is None:
                 QMessageBox.critical(self, "Error", "Energy not set. Cannot toggle between q and 2theta.")
                 return
@@ -1304,7 +1355,12 @@ class MainWindow(QMainWindow):
         y = self.azint_data.get_I(index)
         # U+1F512 padlock emoji
         name = f"\U0001F512 {index}"
-        self.locked_patterns.append([self.is_Q, self.azint_data.user_E_dialog()]) 
+        if self.E is None:
+            self.E = self.get_user_input_energy()
+            if self.E is None:
+                QMessageBox.critical(self, "Error", "Energy not set. Cannot lock pattern.")
+                return
+        self.locked_patterns.append([self.is_Q, self.E]) 
         self.pattern.add_locked_pattern(x,y,name)
 
     def remove_locked_pattern(self):

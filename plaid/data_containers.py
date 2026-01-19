@@ -12,14 +12,10 @@ including loading data from HDF5 files, converting between q and 2theta, and nor
 import numpy as np
 from PyQt6.QtWidgets import  QInputDialog, QMessageBox
 import h5py as h5
-from plaid.nexus import (get_nx_default, get_nx_signal, get_nx_signal_errors, get_nx_axes,
-                         get_nx_energy, get_nx_monitor, get_instrument_name, get_source_name,
-                         get_nx_sample, get_nx_transformations, get_translations_from_nx_transformations)
+from plaid.nexus import (get_nx_monitor, get_nx_sample, get_nx_transformations, 
+                         get_translations_from_nx_transformations)
 from plaid.misc import q_to_tth, tth_to_q, get_map_shape_and_indices, average_blocks
-from plaid.dialogs import H5Dialog
-
-
-
+from plaid.io import export_xy
 
 class AzintData():
     """
@@ -30,7 +26,6 @@ class AzintData():
     Attributes:
     - x: The radial axis data (2theta or q).
     - I: The intensity data.
-    - y_avg: The average intensity data.
     - is_q: A boolean indicating if the radial axis is in q or 2theta.
     - E: The energy data, if available.
     - I0: The I0 data, if available.
@@ -47,7 +42,7 @@ class AzintData():
         self.x = None
         self.I = None
         self.I_error = None
-        self.y_avg = None
+        #self.y_avg = None
         self.is_q = False
         self.E = None
         self.I0 = None
@@ -64,84 +59,16 @@ class AzintData():
 
         #self.aux_data = {} # {alias: np.array}
 
-
-    def load(self, look_for_I0=True):
-        """
-        Determine the file type and load the data with the appropriate function.
-        The load function should take a file name as input and return the x, I, I_error, is_q, and E values.
-        If the I_error or energy are not available in the file, the load function should return None for both.
-        Parameters:
-        - look_for_I0: If True, attempts to load I0 data from a nxmonitor dataset in the file(s).
-        Returns:
-        - True if the data was loaded successfully, False otherwise.
-        """
-        messages = [] # messages to return to caller. A workaround for threading issues with QMessageBox
-        if not all(fname.endswith('.h5') for fname in self.fnames):
-            messages.append((QMessageBox.critical,"Error", "File(s) are not HDF5 files."))
-            print("File(s) are not HDF5 files.")
-            return False, messages
-        
-        if self._load_func is None:
-            # Determine the load function based on the first file
-            self._determine_load_func(self.fnames[0])
-            if self._load_func is None:
-                messages.append((QMessageBox.critical,"Error", "No valid load function found. Please provide a valid azimuthal integration file."))
-                print("No valid load function found. Please provide a valid azimuthal integration file.")
-                return False, messages
-
-        x = None
-        I = np.array([[],[]])
-        I_error = np.array([[],[]])
-        _shapes = []
-        for fname in self.fnames:
-            x_, I_, I_error_, is_q, E = self._load_func(fname)
-            if x_ is None or I_ is None:
-                messages.append((QMessageBox.critical,"Error", f"Error loading data from {fname}."))    
-                print(f"Error loading data from {fname}.")
-                return False, messages
-            if x is not None and x_.shape != x.shape:
-                print(f"Error: Inconsistent x shapes in {fname}.")
-                messages.append((QMessageBox.critical,"Error", f"Inconsistent x shapes in {fname}."))
-                #QMessageBox.critical(self.parent, "Error", f"Inconsistent x shapes in {fname}.")
-                return False, messages
-            x = x_
-            I = np.append(I, I_, axis=0) if I.size else I_
-            _shapes.append(I_.shape)
-            if I_error_ is not None:
-                I_error = np.append(I_error, I_error_, axis=0) if I_error.size else I_error_
-        if I_error.size == 0:
-            I_error = None
-        #I = np.array(I)
-        self.x = x
-        self.I = I
-        self.I_error = I_error
+    def set_secondary_data(self, data_dict):
+        """Set the "secondary" azimuthal integration data from a dictionary."""
+        is_q = data_dict["q"] is not None
         self.is_q = is_q
-        self.E = E
-        self.y_avg = I.mean(axis=0)
-        self.shape = I.shape
-        self._shapes = _shapes
- 
-        if look_for_I0 and self._load_func == self._load_azint:
-            # If the data is loaded from a nxazint file, attempts to load
-            # the I0 data from a nxmonitor dataset in the file. Give the user
-            # the option ignore the I0 data
-            if self.load_I0_from_nxmonitor():
-                # reply = QMessageBox.question(None, "NXmonitor data found",
-                #                      "I0 data loaded from nxmonitor dataset. Do you want to use it?",
-                #                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                #                        QMessageBox.StandardButton.Yes)
-                # if reply == QMessageBox.StandardButton.No:
-                #     self.I0 = None
-                messages.append((QMessageBox.question,"NXmonitor data found",
-                                     "I0 data loaded from nxmonitor dataset. Do you want to use it?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                       QMessageBox.StandardButton.Yes))
-        if self._load_func == self._load_azint:
-            # If the data is loaded from a nxazint file, attempts to load
-            # the map shape and pixel indices from a nxtransformations group in the file.
-            self.load_map_shape_and_indices()
-
-        return True, messages
+        self.x = data_dict["q"] if is_q else data_dict["tth"]
+        self.E = data_dict.get("energy", None)
+        self.instrument_name = data_dict.get("instrument_name", None)
+        self.source_name = data_dict.get("source_name", None)
+        self.map_shape = data_dict.get("map_shape", None)
+        self.map_indices = data_dict.get("map_indices", None)
     
     def load_I0_from_nxmonitor(self):
         """
@@ -203,7 +130,7 @@ class AzintData():
             self.I_error = average_blocks(self.I_error, reduction_factor=reduction_factor, axes=axes)
         if self.I0 is not None:
             self.I0 = average_blocks(self.I0, reduction_factor=reduction_factor, axes=axes)
-        self.y_avg = self.I.mean(axis=0) if self.I is not None else None
+        #self.y_avg = self.I.mean(axis=0) if self.I is not None else None
         self.shape = self.I.shape if self.I is not None else None
         self.map_shape, self.map_indices = None, None  # Invalidate map shape and indices after reduction
         self.reduction_factor *= reduction_factor
@@ -328,17 +255,6 @@ class AzintData():
             print("I0 data must be a numpy array or a list/tuple.")
             return
         
-        # # check if the I0 data are close to unity
-        # # otherwise, normalize it and print a warning
-        # if self.I0.min() <= 0 or self.I0.max() < 0.5 or self.I0.max() > 2:
-        #     message = ("Warning: I0 data should be close to unity and >0. Normalizing it.")
-        #     QMessageBox.warning(self.parent, "I0 Data Warning", message)
-            
-        #     print(f"I0 [{self.I0.min():.2e}, {self.I0.max():.2e}] normalized to [{self.I0.min()/self.I0.max():.2f}, 1.00]")
-        #     self.I0 = self.I0 / np.max(self.I0)
-        #     self.I0[self.I0<=0] = 1  # Set any zero values to 1 to avoid division by zero
-
-
         if self.I is None:
             # Don't normalize (yet)
             return
@@ -366,7 +282,7 @@ class AzintData():
             print("Error retrieving data for export.")
             return False
         
-        self._export_xy(fname,x,y,y_e, kwargs)
+        export_xy(fname,x,y,y_e, kwargs)
         return True
     
     def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, bgr_subtracted=True, kwargs={}):
@@ -389,7 +305,7 @@ class AzintData():
             print("Error retrieving data for export.")
             return False
 
-        self._export_xy(fname,x,y,y_e, kwargs)
+        export_xy(fname,x,y,y_e, kwargs)
         return True
     
     def get_info_string(self):
@@ -415,147 +331,20 @@ class AzintData():
             name += f"reduced x{self.reduction_factor}"
         return name
 
-    def _determine_load_func(self, fname):
-        """Determine the appropriate load function based on the file structure."""
-        with h5.File(fname, 'r') as f:
-            if 'entry/data' in f:
-                self._load_func =   self._load_azint
-            elif 'entry/data1d' in f:
-                self._load_func =  self._load_azint_old
-            elif 'entry/dataxrd1d' in f:
-                self._load_func =   self._load_DM_map
-            elif 'I' in f:
-                self._load_func =   self._load_DM_old
-            else:
-                # Attempt to load using the H5Dialog if no specific structure is found
-                self._load_func = self._load_dialog
-                #print("File type not recognized. Please provide a valid azimuthal integration file.")
-                #self._load_func =   None
-
-    def _load_azint(self, fname):
-        """Load azimuthal integration data from a nxazint HDF5 file."""
-        with h5.File(fname, 'r') as f:
-            default = get_nx_default(f)
-            if default is None:
-                print(f"File {fname} does not contain a valid azimuthal integration dataset.")
-                return None, None, None, None
-            signal = get_nx_signal(default)
-            signal_errors = get_nx_signal_errors(default)
-            axis = get_nx_axes(default)[-1] # Get the last axis, which is usually the radial axis
-            if signal is None or axis is None:
-                print(f"File {fname} does not contain a valid azimuthal integration dataset.")
-                return None, None, None, None
-            x = axis[:]
-            is_Q = 'q' in axis.attrs['long_name'].lower() if 'long_name' in axis.attrs else False
-            I = signal[:]
-            I_error = signal_errors[:] if signal_errors is not None else None
-            E = get_nx_energy(f)
-
-            # get the instrument and source names if available
-            self.instrument_name = get_instrument_name(f)
-            self.source_name = get_source_name(f)
-            return x, I, I_error, is_Q, E
-        # with h5.File(fname, 'r') as f:
-        #     data_group = f['entry/data']
-        #     x = data_group['radial_axis'][:]
-        #     I = data_group['I'][:]
-        #     is_q = 'q' in data_group['radial_axis'].attrs['long_name'].lower()
-
-        #     if 'entry/instrument/monochromator/energy' in f:
-        #         E = f['entry/instrument/monochromator/energy'][()]
-        #     elif 'entry/instrument/monochromator/wavelength' in f:
-        #         wavelength = f['entry/instrument/monochromator/wavelength'][()]
-        #         E = 12.398 / wavelength  # Convert wavelength to energy in keV
-        #     else:
-        #         E = None
-        # return x, I, is_q, E
-
-    def _load_azint_old(self, fname):
-        """Load azimuthal integration data from an old (DanMAX) nxazint HDF5 file."""
-        with h5.File(fname, 'r') as f:
-            data_group = f['entry/data1d']
-            if '2th' in data_group:
-                x = data_group['2th'][:]
-                is_q = False
-            elif 'q' in data_group:
-                x = data_group['q'][:]
-                is_q = True
-            I = data_group['I'][:]
-        return x, I, None, is_q, None
-
-    def _load_DM_old(self, fname):
-        """Load azimuthal integration data from an old DanMAX HDF5 file."""
-        with h5.File(fname, 'r') as f:
-            if '2th' in f:
-                x = f['2th'][:]
-                is_q = False
-            elif 'q' in f:
-                x = f['q'][:]
-                is_q = True
-            I = f['I'][:]
-        return x, I, None, is_q, None
-    
-    def _load_DM_map(self, fname):
-        """Load azimuthal integration data from a DanMAX map HDF5 file."""
-        with h5.File(fname, 'r') as f:
-            data_group = f['entry/dataxrd1d']
-            if 'tth' in data_group:
-                x = data_group['tth'][:]
-                is_q = False
-            elif 'q' in data_group:
-                x = data_group['q'][:]
-                is_q = True
-            I = data_group['xrd'][:] # [radial bins, fast_axis, slow_axis]
-        self.map_shape = I.shape[1:]  # (fast_axis, slow_axis)
-        # self.map_indices = np.arange(I.shape[1]*I.shape[2])
-        self.map_indices = list(range(I.shape[1]*I.shape[2]))
-        # transpose and reshape I
-        I = np.transpose(I, (1,2,0)).reshape(-1, I.shape[0])  # [num_patterns, radial bins]
-        # in the case of xrd-ct data, an extra first column might be present as absorption data
-        # in that case, remove it 
-        if I.shape[1] - x.shape[0] == 1:
-            I = I[:, 1:]  # Remove first column if x has one less element than I
-        return x, I, None, is_q, None   
-    
-    def _load_dialog(self, fname):
-        """
-        Load azimuthal integration data from an h5 file dialog.  
-        This function is used as a last resort if no other load function is found.
-        """
-        dialog = H5Dialog(self.parent, fname)
-        if not dialog.exec_1d_2d_pair():
-            return None, None, None, None, None
-
-        selected = dialog.get_selected_items() # list of tuples with (alias, full_path, shape)
-        axis = [item for item in selected if not "×" in item[2]][0] 
-        signal = [item for item in selected if "×" in item[2]][0]
-        # Check if the shape of the axis and signal match
-        if not axis[2] in signal[2].split("×")[1]:
-            QMessageBox.critical(self.parent, "Error", f"Error: The shape of the axis {axis[2]} does not match the shape of the signal {signal[2]}.")
-            return None, None, None, None
-        with h5.File(fname, 'r') as f:
-            x = f[axis[1]][:]
-            I = f[signal[1]][:]
-            # attempt to guess if the axis is q or 2theta
-            is_q = 'q' in axis[0].lower() or 'q' in f[axis[1]].attrs.get('long_name', '').lower()
-        return x, I, None, is_q, None
-
-    def _export_xy(self, fname, x, y, y_e=None, kwargs={}):
-        """
-        Export the azimuthal integration data to a text file.  
-        kwargs are passed to np.savetxt.
-        """
-        if y_e is None:
-            np.savetxt(fname, np.column_stack((x, y)),comments='#',**kwargs)
-        else:
-            np.savetxt(fname, np.column_stack((x, y, y_e)),comments='#',**kwargs)
-        return True
-
 class AuxData:
     """A class to hold auxiliary data for azimuthal integration."""
     def __init__(self,parent=None):
         self._parent = parent
         self.I0 = None
+        self._E = None
+
+    def set_energy(self, E):
+        """Set energy"""
+        self._E = E
+        
+    def get_energy(self):
+        """Get energy"""
+        return self._E
 
     def set_I0(self, I0):
         """Set I0"""

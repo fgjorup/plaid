@@ -25,16 +25,6 @@ colors = ["#C41E3A", # Crimson Red
           "#2F4F4F", # Dark Slate Gray
          ]
 
-# colors = [
-#         '#AAAA00',  # Yellow
-#         '#AA00AA',  # Magenta
-#         '#00AAAA',  # Cyan
-#         '#AA0000',  # Red
-#         '#00AA00',  # Green
-#         "#0066FF",  # Blue
-#         '#AAAAAA',  # Light Gray
-#         ]
-
 class HeatmapWidget(QWidget):
     """
     A widget to display a heatmap of 2d data with moveable
@@ -505,6 +495,8 @@ class PatternWidget(QWidget):
         self.hkl_text_item = pg.TextItem(text='', anchor=(0.5, 0), color='w')
         self.plot_widget.getPlotItem().addItem(self.hkl_text_item)
         self.hkl_text_item.setVisible(False)  # Hide the text item by default
+        # initialize the plot limits
+        self.plot_widget.setLimits(xMin=-1, xMax=181)
 
         self.plot_widget.sigXRangeChanged.connect(self.xrange_changed)
 

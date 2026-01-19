@@ -21,6 +21,14 @@ def get_nx_group(gr, name, nxclass=None):
             if "NX_class" in gr[key].attrs and gr[key].attrs["NX_class"] == nxclass:
                 return gr[key]
 
+def get_h5_dset_path(gr,name):
+    """Utility function to get the full path of a dataset in an HDF5 file group."""
+    if gr is None:
+        return None
+    if name in gr:
+        return gr[name].name
+    return None
+
 def get_nx_entry(f,definition=None,allow_subentry=True):
     """
     Get the entry nexus group from a nexus hdf5 instance.

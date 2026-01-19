@@ -64,7 +64,11 @@ class H5Dialog(QDialog):
         self.file_tree.setSortingEnabled(False)
         self.layout().addWidget(self.file_tree,2)
         self.file_tree.itemDoubleClicked.connect(self.item_double_clicked)
-        self._populate_tree(file_path)
+        if isinstance(file_path, str):
+            with h5.File(file_path, 'r') as file:
+                self._populate_tree(file)
+        else:
+            self._populate_tree(file_path)
         self.file_tree.header().setSectionResizeMode(1,self.file_tree.header().ResizeMode.Fixed)
         self.file_tree.header().setStretchLastSection(False)
 
@@ -225,21 +229,21 @@ class H5Dialog(QDialog):
             self.selected_items = None
         self.accept()
 
-    def _populate_tree(self, file_path):
+    def _populate_tree(self, f):
         """
         Populate the tree with the content of the HDF5 file as a tree structure
         with two columns: the item name and its shape.
         """
-        with h5.File(file_path, 'r') as f:
-            for key in f.keys():
-                shape = f[key].shape if hasattr(f[key], 'shape') and len(f[key].shape) else ""
-                item = QTreeWidgetItem([key, self._shape_to_str(shape)])
-                self.file_tree.addTopLevelItem(item)
-                if isinstance(f[key], h5.Group):
-                    has_child_with_shape = self._populate_item(item, f[key])
-                #if not has_child_with_shape:
-                    # If no child has a shape, set the item to a lighter color
-                    # item.setForeground(0, pg.mkColor("#AAAAAA"))
+        # with h5.File(file_path, 'r') as f:
+        for key in f.keys():
+            shape = f[key].shape if hasattr(f[key], 'shape') and len(f[key].shape) else ""
+            item = QTreeWidgetItem([key, self._shape_to_str(shape)])
+            self.file_tree.addTopLevelItem(item)
+            if isinstance(f[key], h5.Group):
+                has_child_with_shape = self._populate_item(item, f[key])
+            #if not has_child_with_shape:
+                # If no child has a shape, set the item to a lighter color
+                # item.setForeground(0, pg.mkColor("#AAAAAA"))
 
     def _populate_item(self, parent_item, group):
         """
