@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 plaid - plaid looks at integrated data
-F.H. Gjørup 2025
+F.H. Gjørup 2025-2026
 Aarhus University, Denmark
 MAX IV Laboratory, Lund University, Sweden
 
