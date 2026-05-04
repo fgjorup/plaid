@@ -112,3 +112,24 @@ plt.show()
 | ↓   | Move the active line one frame down         |
 | ←   | Move the active line several frames down    |
 | →   | Move the active line several frames up      |
+
+
+## Example Files (Zenodo)
+Example files made available by [MAX IV Laboratory](https://www.maxiv.lu.se/), can be found on [Zenodo](https://zenodo.org/).  
+#### [LaB6.h5](https://zenodo.org/records/18685806)
+Minimal NXazint1d file example. PXRD data from a LaB6 sample. 10 frames, 3000 radial bins.
+
+#### [BTO.h5](https://zenodo.org/records/18685854)
+NXazint1d file example, including I0 monitor, sample temperature (not calibrated), and time. Variable temperature PXRD data from a BaTiO3 sample. 500 frames, 3000 radial bins.
+
+#### [Magnet.h5](https://zenodo.org/records/18685870)
+NXazint2d file example, including I0 monitor, and sample rotation. PXRD data from a ferrite fridge magnet. Omega scan -45 -> 45 deg, 1 deg omega step, (right-handed rotation). 2000 radial bins, 180 azimuthal bins.
+
+#### [Magnet_multi.h5](https://zenodo.org/records/18685880)
+Combined NXazint1d and NXazint2d file example, including I0 monitor and sample rotation. PXRD data from a ferrite fridge magnet. Omega scan -45 -> 45 deg, 1 deg omega step, (right-handed rotation). 2000 radial bins, 180 azimuthal bins.
+
+#### [Magnet_low_res.h5](https://zenodo.org/records/18685893)
+Small NXazint2d file example, including I0 monitor, and sample rotation. PXRD data from a ferrite fridge magnet. Omega scan 0 - 45 deg, 2 deg omega step, (right-handed rotation), 2000 radial bins, 36 azimuthal bins.
+
+#### [Pinapple.h5](https://zenodo.org/records/18685899)
+NXazint1d mapping file example, including I0 monitor, and sample position. PXRD data from a scale of a pineapple mapped with a focused beam. 36055 diffractograms, each with 2000 radial bins.
