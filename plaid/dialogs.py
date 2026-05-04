@@ -536,7 +536,7 @@ class ExportSettingsDialog(QDialog):
                 if isinstance(widget, QLineEdit):
                     widget.setText(value)
                 elif isinstance(widget, QSpinBox):
-                    widget.setValue(value)
+                    widget.setValue(int(value))
                 elif isinstance(widget, (QCheckBox, QRadioButton)):
                     if isinstance(value, str):
                         # If the value is a string, convert it to boolean
