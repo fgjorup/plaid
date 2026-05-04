@@ -83,6 +83,13 @@ class HeatmapWidget(QWidget):
         self.histogram.setImageItem(self.image_item)
         self.histogram.item.gradient.loadPreset('viridis')
         layout.addWidget(self.histogram,0)
+
+        # get the context menu of the plot widget and add an option to transpose the map
+        menu = self.plot_widget.getPlotItem().getViewBox().getMenu(None)
+        action_logscale = QAction("Log Scale",self)
+        menu.insertAction(menu.actions()[1],action_logscale)
+        action_logscale.triggered.connect(self.toggle_log_scale)
+
         
         self.plot_widget.getPlotItem().mouseDoubleClickEvent = self.image_double_clicked
 
@@ -119,6 +126,15 @@ class HeatmapWidget(QWidget):
         # emit the signal for the removed horizontal line
         self.sigHLineRemoved.emit(index)
         self.active_line = self.h_lines[-1] if self.h_lines else None  # Set the active line to the last one if available
+
+    def toggle_log_scale(self):
+        """Toggle logarithmic scale for the heatmap."""
+        if self.image_item.image is not None:
+            im = self.image_item.image
+            if self.use_log_scale:
+                im = 10**im
+            self.use_log_scale = not self.use_log_scale
+            self.set_data(self.x, im)
 
     def set_data(self, x,z,y=None):
         """Set the data for the heatmap."""
@@ -496,11 +512,12 @@ class PatternWidget(QWidget):
         self.plot_widget.getPlotItem().addItem(self.hkl_text_item)
         self.hkl_text_item.setVisible(False)  # Hide the text item by default
         # initialize the plot limits
-        self.plot_widget.setLimits(xMin=-1, xMax=181)
+        self.plot_widget.setLimits(xMin=-1, xMax=181, yMin=-1e4, yMax=1e8)
 
         self.plot_widget.sigXRangeChanged.connect(self.xrange_changed)
 
         self.plot_widget.getPlotItem().vb.hoverEvent = self.hover_event
+        self.plot_widget.getPlotItem().vb.mouseDoubleClickEvent = self.mouse_double_clicked
 
         self.set_xlabel("radial axis")
         self.set_ylabel("intensity")
@@ -577,6 +594,8 @@ class PatternWidget(QWidget):
         #self.toolbar.addAction(menu.menuAction())
         action.setMenu(menu)
         action.triggered.connect(lambda: menu.exec(QCursor.pos()))
+
+        self.plot_widget.getPlotItem().ctrl.logYCheck.toggled.connect(self.rescale_all_references)
 
 
     def add_pattern(self):
@@ -695,12 +714,10 @@ class PatternWidget(QWidget):
         """Set the data for a reference pattern item."""
         x = np.repeat(x,2)
         I = np.repeat(I,2)
-        I[::2] = 0  # Set the intensity to 0 for the first point of each pair
-        if self.y is None:
-            scale = 100
-        else:
-            scale = self.y.max() if self.y.max()>0 else 1.
-        item.setData(x, I*scale)  # Update with new data
+        I[::2] = 1e-10
+        item.setData(x, I)  # Update with new data
+        self._rescale_reference(item)  # Rescale the reference pattern to match the current y-axis scale
+
 
     def remove_reference(self, index=-1):
         """Remove a reference pattern from the plot."""
@@ -714,16 +731,46 @@ class PatternWidget(QWidget):
         reference_item.setVisible(is_checked)
         self.hkl_text_item.setVisible(False)  # Hide the text item when toggling reference visibility
 
+    def rescale_all_references(self):
+        """Rescale the intensity of all reference patterns to the current y-max."""
+        for reference_item in self.reference_items:
+            self._rescale_reference(reference_item)
+
     def rescale_reference(self,index):
         """Rescale the intensity of the indexed reference to the current y-max"""
         reference_item = self.reference_items[index]
+        self._rescale_reference(reference_item)
+
+    def _rescale_reference(self, reference_item):
         x, I = reference_item.getData()
-        I /= I.max()  # Normalize the intensity to the maximum value
-        if self.y is None or len(self.y) == 0:
-            scale = 100
+        # check if the yxais is in log mode
+        _y_axis = self.get_axis('y')
+        if _y_axis.logMode:
+            # bring back to linear scale
+            I = 10**I
+            I = I-I.min()
+            # normalize
+            I /= I.max()
+            # scale
+            if self.y is None or len(self.y) == 0:
+                _y_min, _y_max = [10**r for r in _y_axis.range]
+            else:
+                _y = self.y[self.y > 0]
+                _y_min = _y.min()*.9
+                _y_max = _y.max()
+            I = I*(_y_max-_y_min)+_y_min
+
+            reference_item.setData(x, I)  # Rescale the reference pattern
+
         else:
-            scale = self.y.max()
-        reference_item.setData(x, I*scale)  # Rescale the reference pattern
+            I /= I.max()  # Normalize the intensity to the maximum value
+            I[::2] = 1e-10
+            if self.y is None or len(self.y) == 0:
+                scale = 100
+            else:
+                scale = self.y.max()
+            reference_item.setData(x, I*scale)  # Rescale the reference pattern
+        
         
     def reference_clicked(self, item, event):
         """Handle the click event on a reference pattern."""
@@ -741,8 +788,17 @@ class PatternWidget(QWidget):
         # Show the hkl indices in the text item
         self.hkl_text_item.setColor(color)
         self.hkl_text_item.setText(f"({hkl})")
-        self.hkl_text_item.setPos(x_hkls[idx], 0)
+        self.hkl_text_item.setPos(x_hkls[idx], y)
         self.hkl_text_item.setVisible(True)  # Show the text item
+    
+    def toggle_log_y(self, checked):
+        """Toggle logarithmic scale for the y-axis."""
+        if checked:
+            self.plot_widget.setLogMode(y=True)
+            self.plot_widget.setLimits(yMin=-8, yMax=8)
+        else:
+            self.plot_widget.setLogMode(y=False)
+            self.plot_widget.setLimits(yMin=-1e4, yMax=1e8)
 
     def set_avg_data(self, y_avg):
         """Set the average data for the pattern."""
@@ -753,11 +809,11 @@ class PatternWidget(QWidget):
 
     def set_xlabel(self, label):
         """Set the x-axis label."""
-        self.plot_widget.getPlotItem().getAxis('bottom').setLabel(label)
+        self.get_axis('x').setLabel(label)
     
     def set_ylabel(self, label):
         """Set the y-axis label."""
-        self.plot_widget.getPlotItem().getAxis('left').setLabel(label)
+        self.get_axis('y').setLabel(label)
 
     def set_xrange(self, x_range):
         """Set the x-axis range."""
@@ -769,7 +825,6 @@ class PatternWidget(QWidget):
         self.plot_widget.setXRange(x_min, x_max, padding=0)
         # reconnect the signal
         self.plot_widget.sigXRangeChanged.connect(self.xrange_changed)
-        #self.plot_widget.getPlotItem().getAxis('bottom').setRange(x_min, x_max)
     
     def xrange_changed(self,vb, x_range):
         """Handle the x-axis range change."""
@@ -813,7 +868,10 @@ class PatternWidget(QWidget):
         if roi is None or np.sum(roi) == 0:
             return
         y = self.y[roi]
-        y0 = np.zeros_like(y)
+        if self.get_log_mode('y'):
+            y0 = self.y[self.y > 0].min() * np.ones_like(y)
+        else:
+            y0 = np.zeros_like(y)
         if self.linear_region_ignore_negative:
             y = np.clip(y, 0, None)
         if self.linear_region_linear_background:
@@ -867,6 +925,17 @@ class PatternWidget(QWidget):
         self.update_fill_area()
         self.sigLinearRegionChangedFinished.emit(self.get_linear_region_roi())
 
+    def get_axis(self, axis):
+        """Get the specified axis of the plot."""
+        axis_names = {'x': 'bottom', 'bottom': 'bottom', 'y': 'left', 'left': 'left'}
+        if axis in axis_names:
+            axis = axis_names[axis]
+        return self.plot_widget.getPlotItem().getAxis(axis)
+    
+    def get_log_mode(self, axis='y'):
+        """Get the log mode of the specified axis."""
+        return self.get_axis(axis).logMode
+
     def hover_event(self, event):
         """Handle the hover event on the plot item."""
         if not event.isExit():
@@ -878,12 +947,26 @@ class PatternWidget(QWidget):
             pos = self.plot_widget.getPlotItem().vb.mapToView(pos)
             x = pos.x()
             y = pos.y()
+            if self.get_log_mode('y'):
+                y = 10**y
             # Emit the signal with the x and y coordinates
             self.sigPatternHovered.emit((x, y))
         else:
             # emit None to indicate the mouse is no longer hovering
             self.sigPatternHovered.emit(None)  # Emit None to indicate no hover
 
+    def mouse_double_clicked(self, event):
+        """Handle the mouse double click event on the plot item."""
+        if self.lr.isVisible():
+            pos = event.pos()
+            # # Convert the position to the plot item's coordinates
+            x = self.plot_widget.getPlotItem().vb.mapToView(pos).x()
+            x_min, x_max = self.lr.getRegion()
+            width = x_max - x_min
+            new_x_min = x - width / 2
+            new_x_max = x + width / 2
+            self.lr.setRegion([new_x_min, new_x_max])
+        
     def set_color_cycle(self,color_cycle):
         """Set the color cycle for the plot items."""
         self.color_cycle = color_cycle
@@ -922,8 +1005,8 @@ class PatternWidget(QWidget):
         Update the foreground color of the plot widget to the current default
         from pyqtgraph configOptions.
         """
-        x_axis = self.plot_widget.getPlotItem().getAxis('bottom')
-        y_axis = self.plot_widget.getPlotItem().getAxis('left')
+        x_axis = self.get_axis('x')
+        y_axis = self.get_axis('y')
 
         x_axis.setPen()
         x_axis.setTextPen()
@@ -1127,7 +1210,8 @@ class BasicMapWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.fnames = []  # used to keep track of which dataset is used
-        self.transpose = False
+        self.transposed = False
+        self.log_scale = False
 
         # Create a layout
         vlayout = QVBoxLayout(self)
@@ -1181,13 +1265,21 @@ class BasicMapWidget(QWidget):
         menu.insertAction(menu.actions()[1],action_transpose)
         action_transpose.triggered.connect(self.toggle_transpose)
 
+        # add a log scale action to the context menu
+        action_log_scale = QAction("Log scale",self)
+        action_log_scale.setCheckable(True)
+        menu.insertAction(menu.actions()[2],action_log_scale)
+        action_log_scale.triggered.connect(self.toggle_log_scale)
+
 
     def set_data(self, im):
         """Set the data for the map."""
         if im is None:
             return
-        if self.transpose:
+        if self.transposed:
             im = im.T
+        if self.log_scale:
+            im = np.log10(im, where=(im>0), out=np.zeros_like(im))
         self.image_item.setImage(im)
 
     def image_double_clicked(self, event):
@@ -1245,14 +1337,27 @@ class BasicMapWidget(QWidget):
     def toggle_transpose(self):
         """Transpose the map."""
         # new transpose state
-        _transpose = not self.transpose
+        _transpose = not self.transposed
         # always set transpose to True when updating the data
         # to either transpose or "un-transpose" the image
-        self.transpose = True
+        self.transposed = True
         im = self.image_item.image
         self.set_data(im)
         # set the transpose state
-        self.transpose = _transpose
+        self.transposed = _transpose
+
+    def toggle_log_scale(self, checked):
+        """Toggle logarithmic scale for the color map."""
+        im = self.image_item.image
+        # if already in log scale, bring back to linear scale before updating the data
+        if self.log_scale:
+            im = 10**im
+        # if already transposed, bring back to original orientation before updating the data
+        if self.transposed:
+            im = im.T
+        self.log_scale = checked
+        self.set_data(im)
+
 
 class CorrelationMapWidget(BasicMapWidget):
     """

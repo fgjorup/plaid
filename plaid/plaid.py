@@ -64,6 +64,7 @@ import plaid.resources
 # - Crop data option? Perhaps save cropped .h5 copy?
 # - Restructure data loading
 #    > Update plots on the fly during reading?
+# - FIX reference scaling when toggling between linear and log scale
 
 
 ALLOW_EXPORT_ALL_PATTERNS = True
@@ -1123,7 +1124,7 @@ class MainWindow(QMainWindow):
     def get_user_input_energy(self):
         """Prompt the user to input the energy if not already set."""
         E = self.azint_data.user_E_dialog()
-        if E is not None and self.azint_data.fnames[0] in self.aux_data:
+        if E is not None and self.azint_data.fnames is not None and self.azint_data.fnames[0] in self.aux_data:
             self.aux_data[self.azint_data.fnames[0]].set_energy(E)
         return E
 
@@ -1627,6 +1628,8 @@ class MainWindow(QMainWindow):
                 z = np.zeros(self.azint_data.shape[0])
             else:
                 I = self.azint_data.get_I()[:, roi]
+                # if self.pattern.get_log_mode():
+                #     I = np.log10(I, where=(I>0), out=np.zeros_like(I))
                 if self.pattern.linear_region_ignore_negative:
                     I[I<0] = 0
                 elif self.pattern.linear_region_linear_background:
@@ -1731,7 +1734,11 @@ class MainWindow(QMainWindow):
             I = self.azint_data.get_I()
             x = self.heatmap.x
             # y = np.arange(I.shape[0])
-            self.heatmap.set_data(x, I.T) 
+            if I is not None:
+                self.heatmap.set_data(x, I.T)
+
+            self.pattern.toggle_log_y(self.heatmap.use_log_scale)
+
         elif event.key() == QtCore.Qt.Key.Key_C:
             # Show/hide the correlation map
             self.show_correlation_map()
