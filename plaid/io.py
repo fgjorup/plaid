@@ -18,6 +18,7 @@ import numpy as np
 from PyQt6.QtCore import pyqtSignal, QObject, QThread, pyqtSlot
 from nexus import *
 from dialogs import H5Dialog
+from plaid.misc import get_map_shape_and_indices
 try:
     from USER_FILE_PARSER import USER_FILE_PARSER
 except Exception as e:
@@ -272,6 +273,18 @@ def load_file(fname, parent=None):
             instrument = get_nx_instrument(entry)
             source = get_nx_source(entry)
             monitor = get_nx_monitor(entry)
+            # try to get sample translations from the transformations group, which can be used to
+            #  determine the map shape and indices for mapping the 1D data back to 2D
+            map_shape = None
+            map_indices = None
+            translations = get_translations_from_nx_transformations(entry)
+            if translations and 'x' in translations and 'y' in translations:
+                # try to determine the map shape and indices from the translations, but catch any
+                #  errors and print them, ignoring the map shape and indices if it fails
+                try:
+                    map_shape, map_indices = get_map_shape_and_indices(translations['y'], translations['x'])
+                except Exception as e:
+                    print(f"Error determining map shape and indices from translations: {e}")
             data_dict = {"I": signal.name,
                         "I_error": signal_errors.name if signal_errors is not None else None,
                         "tth": axis[:] if not is_Q else None,
@@ -281,6 +294,8 @@ def load_file(fname, parent=None):
                         "I0": monitor["data"][:] if monitor is not None else None,
                         "instrument_name": get_instrument_name(instrument),
                         "source_name": get_source_name(source),
+                        "map_shape": map_shape,
+                        "map_indices": map_indices,
                         }
 
         elif 'entry/dataxrd1d/xrd' in f:

@@ -218,9 +218,9 @@ def get_translations_from_nx_transformations(gr):
     'vector' attribute to identify the axis.
     Returns a dictionary with keys 'x', 'y', 'z' and values as the corresponding datasets.
     """
+    translations = {}
     transformations = get_nx_transformations(gr)
     if transformations is not None:
-        translations = {}
         for name, dset in transformations.items():
             if hasattr(dset, 'attrs') and "transformation_type" in dset.attrs:
                 v = dset.attrs.get("vector",None)
