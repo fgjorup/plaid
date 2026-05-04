@@ -285,7 +285,7 @@ class AzintData():
         export_xy(fname,x,y,y_e, kwargs)
         return True
     
-    def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, bgr_subtracted=True, kwargs={}):
+    def export_average_pattern(self, fname, is_Q=False, I0_normalized=True, kwargs={}):
         """
         Export the average azimuthal integration data to a text file.  
         If I0_normalized is True, normalize the intensity data by I0.  
@@ -298,8 +298,8 @@ class AzintData():
             x = self.get_q()
         else:
             x = self.get_tth()
-        y = self.get_average_I(I0_normalized=I0_normalized, bgr_subtracted=bgr_subtracted)
-        y_e = self.get_average_I_error(I0_normalized=I0_normalized, bgr_subtracted=bgr_subtracted)
+        y = self.get_average_I(I0_normalized=I0_normalized)
+        y_e = self.get_average_I_error(I0_normalized=I0_normalized)
         
         if x is None or y is None:
             print("Error retrieving data for export.")
